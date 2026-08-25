@@ -24,10 +24,15 @@ Rodar broker mqtt mosquito na porta 1883
   eclipse-mosquitto:2
 ```
 ## Testar broker
-Acessar broker dentro do mosquito
+Acessar broker dentro do docker
 
 ```bash
 docker exec -it mosquitto sh
+```
+
+Ou executar subscriber.py
+```bash
+uv run subscriber.py
 ```
 
 ## Subscrever no topico /temperature-data
