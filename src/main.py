@@ -1,5 +1,5 @@
-from temperature_sensor import mockup_temperature
-from payload import prepare_payload
+from sensors.temperature_sensor import mockup_temperature
+from payload.payload import prepare_payload
 import paho.mqtt.client as mqtt
 import time
 
