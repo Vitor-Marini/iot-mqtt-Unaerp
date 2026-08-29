@@ -1,0 +1,6 @@
+docker run -d \
+  --name prometheus \
+  -p 0.0.0.0:9090:9090 \
+  --add-host=host.docker.internal:host-gateway \
+  -v /home/felipegranvile/Documentos/GitHub/iot-mqtt-Unaerp/configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml \
+  prom/prometheus
