@@ -10,9 +10,6 @@ TaskHandle_t hTaskSensors  = NULL;
 TaskHandle_t hTaskWiFiMQTT = NULL;
 
 void vTaskSensors(void* pvParameters) {
-    Serial.println("[FreeRTOS] vTaskSensors started on Core 1.");
-    sensorService.init();
-
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(SENSOR_READ_INTERVAL_MS);
 
@@ -23,17 +20,15 @@ void vTaskSensors(void* pvParameters) {
 
         if (xSensorQueue != NULL) {
             if (xQueueSend(xSensorQueue, &payload, 0) != pdPASS) {
-                Serial.println("[FreeRTOS Warning] Sensor queue full. Payload dropped.");
+                Serial.println("[WARNING] Sensor queue full. Payload dropped.");
             }
         }
     }
 }
 
 void vTaskWiFiMQTT(void* pvParameters) {
-    Serial.println("[FreeRTOS] vTaskWiFiMQTT started on Core 1.");
-
     if (!wifiManagerService.initWiFi()) {
-        Serial.println("[WiFi Error] Critical failure connecting to WiFi.");
+        Serial.println("[ERROR] Critical WiFi initialization failure!");
     }
 
     mqttService.init();
@@ -57,7 +52,7 @@ void vTaskWiFiMQTT(void* pvParameters) {
                 mqttService.publishHealthCheck(receivedPayload.isValid);
             }
         } else {
-            Serial.println("[WiFi] Waiting for network reconnection...");
+            Serial.println("[WIFI] Waiting for network reconnection...");
             vTaskDelay(pdMS_TO_TICKS(2000));
         }
 
@@ -69,15 +64,23 @@ void setup() {
     Serial.begin(115200);
     delay(1000);
 
-    Serial.println("\n-----------------------------------------");
-    Serial.println("   ESP32 MQTT CLIENT - BASE FIRMWARE    ");
-    Serial.println("-----------------------------------------");
-    Serial.println("Device MAC ID: " + getDeviceMacId());
-    Serial.println("-----------------------------------------\n");
+    Serial.println("\n==================================================");
+    Serial.println("       ESP32 BMP280 MQTT NODE FIRMWARE           ");
+    Serial.println("==================================================");
+    Serial.println(" [SYSTEM] MAC Address  : " + getDeviceMacId());
+    Serial.println(" [SYSTEM] Topic Base   : " + String(MQTT_TOPIC_BASE));
+    Serial.println(" [SYSTEM] Broker Host  : " + String(MQTT_BROKER_HOST) + ":" + String(MQTT_BROKER_PORT));
+    Serial.println(" [SYSTEM] I2C Pins     : SDA=" + String(I2C_SDA) + ", SCL=" + String(I2C_SCL));
+    Serial.println(" [SYSTEM] Read Interval: " + String(SENSOR_READ_INTERVAL_MS) + " ms");
+    Serial.println(" [SYSTEM] Health Interval: " + String(HEALTH_CHECK_INTERVAL_MS) + " ms");
+    Serial.println("==================================================\n");
+
+    // Initialize hardware sensor synchronously before FreeRTOS tasks start
+    sensorService.init();
 
     xSensorQueue = xQueueCreate(SENSOR_QUEUE_LEN, sizeof(SensorPayload));
     if (xSensorQueue == NULL) {
-        Serial.println("[Error] Failed to create FreeRTOS sensor queue!");
+        Serial.println("[ERROR] Failed to create FreeRTOS sensor queue!");
         return;
     }
 
@@ -101,7 +104,7 @@ void setup() {
         1
     );
 
-    Serial.println("[System] All FreeRTOS tasks started successfully.");
+    Serial.println("[SYSTEM] FreeRTOS tasks created successfully.\n");
 }
 
 void loop() {

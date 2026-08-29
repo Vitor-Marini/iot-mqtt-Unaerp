@@ -9,7 +9,7 @@ void SystemMQTTClient::init() {
     String macId = getDeviceMacId();
     clientId = macId;
 
-    // Build dynamic topic strings using base path, MAC address, and configured topic suffixes
+    // Build dynamic topic paths using base path, MAC address, and configured topic suffixes
     telemetryTopic   = String(MQTT_TOPIC_BASE) + "/" + macId + "/" + String(MQTT_TOPIC_TELEMETRY);
     healthCheckTopic = String(MQTT_TOPIC_BASE) + "/" + macId + "/" + String(MQTT_TOPIC_HEALTHCHECK);
     commandTopic     = String(MQTT_TOPIC_BASE) + "/" + macId + "/" + String(MQTT_TOPIC_COMMANDS);
@@ -18,32 +18,30 @@ void SystemMQTTClient::init() {
     mqttClient.setServer(MQTT_BROKER_HOST, MQTT_BROKER_PORT);
     mqttClient.setCallback(mqttCallback);
 
-    Serial.println("[MQTT] Client Initialized:");
-    Serial.println("       Client ID (MAC):     " + clientId);
-    Serial.println("       Telemetry Topic:    " + telemetryTopic);
+    Serial.println("[MQTT] Client Routes Configured:");
+    Serial.println("       Device ID (MAC)   : " + clientId);
+    Serial.println("       Telemetry Topic   : " + telemetryTopic);
     Serial.println("       Health Check Topic: " + healthCheckTopic);
-    Serial.println("       Command Topic:      " + commandTopic);
+    Serial.println("       Command Topic     : " + commandTopic);
 }
 
 bool SystemMQTTClient::connect() {
     if (mqttClient.connected()) return true;
 
-    Serial.print("[MQTT] Connecting to Broker (" + String(MQTT_BROKER_HOST) + ")... ");
+    Serial.print("[MQTT] Connecting to Broker (" + String(MQTT_BROKER_HOST) + ":" + String(MQTT_BROKER_PORT) + ")... ");
     
-    // Attempt connection with unique MAC client ID
     if (mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
         Serial.println("CONNECTED!");
         
-        // Subscribe to inbound node command and broadcast topics
         mqttClient.subscribe(commandTopic.c_str());
         mqttClient.subscribe(broadcastTopic.c_str());
 
-        // Publish initial health check upon connection
         publishHealthCheck(true);
         return true;
     } else {
-        Serial.print("FAILED! rc=");
-        Serial.println(mqttClient.state());
+        Serial.print("FAILED (rc=");
+        Serial.print(mqttClient.state());
+        Serial.println(")");
         return false;
     }
 }
@@ -64,11 +62,9 @@ void SystemMQTTClient::loop() {
 bool SystemMQTTClient::publishTelemetry(const SensorPayload& data) {
     if (!mqttClient.connected()) return false;
 
-    // Use synced UTC epoch time if available, otherwise fall back to uptime seconds
     time_t now = time(NULL);
     uint64_t timestampUtc = (now > 1000000000) ? (uint64_t)now : (uint64_t)(data.timestamp_ms / 1000);
 
-    // Build telemetry JSON payload matching system architecture schema
     JsonDocument doc;
     doc["sensor_id"]    = getDeviceMacId();
     doc["sensor_model"] = "BMP280";
@@ -82,9 +78,12 @@ bool SystemMQTTClient::publishTelemetry(const SensorPayload& data) {
 
     bool result = mqttClient.publish(telemetryTopic.c_str(), buffer, n);
     if (result) {
-        Serial.println("[MQTT Telemetry] Published to " + telemetryTopic + ": " + String(buffer));
+        Serial.println("\n--------------------------------------------------");
+        Serial.println("[MQTT TX] Telemetry Published -> " + telemetryTopic);
+        serializeJsonPretty(doc, Serial);
+        Serial.println("\n--------------------------------------------------");
     } else {
-        Serial.println("[MQTT Error] Failed to publish telemetry.");
+        Serial.println("[MQTT ERROR] Failed to publish telemetry payload.");
     }
     return result;
 }
@@ -95,7 +94,6 @@ bool SystemMQTTClient::publishHealthCheck(bool sensorOk) {
     time_t now = time(NULL);
     uint64_t timestampUtc = (now > 1000000000) ? (uint64_t)now : (uint64_t)(millis() / 1000);
 
-    // Build health-check JSON payload for device diagnostic monitoring
     JsonDocument doc;
     doc["sensor_id"]    = getDeviceMacId();
     doc["sensor_model"] = "BMP280";
@@ -110,9 +108,12 @@ bool SystemMQTTClient::publishHealthCheck(bool sensorOk) {
 
     bool result = mqttClient.publish(healthCheckTopic.c_str(), buffer, n);
     if (result) {
-        Serial.println("[MQTT HealthCheck] Published to " + healthCheckTopic + ": " + String(buffer));
+        Serial.println("\n--------------------------------------------------");
+        Serial.println("[MQTT TX] Health-Check Published -> " + healthCheckTopic);
+        serializeJsonPretty(doc, Serial);
+        Serial.println("\n--------------------------------------------------");
     } else {
-        Serial.println("[MQTT Error] Failed to publish health check.");
+        Serial.println("[MQTT ERROR] Failed to publish health-check payload.");
     }
     return result;
 }
