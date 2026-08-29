@@ -1,5 +1,29 @@
 # Projeto desenvolvido para disciplina de Hadware configurável e IOT.
 
+# Tópico
+/telemetry
+/health-check
+
+# Configurações do Broker
+  mqtt_broker_configs = {
+      "HOST": "localhost",
+      "PORT": 1883,
+      "CLIENT_NAME": "client_esp32",
+      "KEEPALIVE": 3,
+      "TOPIC": "/telemetry", "/health-check"
+}
+
+# Payload tópico
+    sensor_data = {
+        "sensor_id": MAC,
+        "sensor_model": BMP280,
+        "temperature": temperature,
+        "pressure": pressure,
+        "altitude": altitude,
+        "timestamp": timestamp UTC,
+    }
+
+
 Arquitetura:
 1. Publisher IOT (Raspberry ou ESP32)
 2. Broker MQTT
@@ -35,8 +59,10 @@ Ou executar subscriber.py
 uv run subscriber.py
 ```
 
-## Subscrever no topico /temperature-data
+## Subscrever no topico /telemetry
 
 ```bash
 mosquitto_sub -t /temperature-data -v
 ```
+
+## Publicar tópico 
