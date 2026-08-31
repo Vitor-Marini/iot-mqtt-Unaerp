@@ -50,8 +50,10 @@ iot-mqtt-Unaerp/
 │   ├── architecture.md        # diagrama, fluxo de dados e decisões de projeto
 │   └── mqtt-contract.md       # tópicos e schema dos payloads
 │
+├── test/                      # bancada de teste: broker local + subscriber de inspeção
+│
 └── services/
-    ├── esp32-firmware/        # platformio.ini, src/, include/config.h.example
+    ├── esp32-firmware/        # platformio.ini, secrets.ini.example, include/, src/
     ├── mosquitto/             # config/mosquitto.conf, docker-compose.yml
     ├── subscriber/            # cmd/, internal/, Dockerfile, docker-compose.yml
     ├── prometheus/            # config/prometheus.yml, targets/, docker-compose.yml
@@ -68,7 +70,8 @@ reaprender nada:
 - `.env.example` — toda a configuração, com valores padrão. Copie para `.env`.
 - `config/` ou `provisioning/` — arquivos montados como somente-leitura.
 
-Nenhum segredo é versionado: `.env` e `include/config.h` estão no `.gitignore`.
+Nenhum segredo é versionado: `.env` e o `secrets.ini` do firmware estão no
+`.gitignore`.
 
 ### O contrato é o acoplamento
 
@@ -130,7 +133,7 @@ docker compose up -d
 
 # 5. ESP32
 cd services/esp32-firmware
-cp include/config.h.example include/config.h   # ajuste WiFi e MQTT_HOST
+cp secrets.ini.example secrets.ini   # ajuste WiFi, mqtt_host e mqtt_topic_base
 pio run --target upload
 ```
 
@@ -153,9 +156,9 @@ prontos. Os dois serviços com código próprio estão como esqueleto documentad
 
 | Serviço | Estado |
 |---|---|
+| `esp32-firmware` | Completo — FreeRTOS, BMP280, WiFiManager, NTP e MQTT funcionando |
 | `mosquitto`, `prometheus`, `grafana` | Funcionais — sobem e se conectam |
-| `esp32-firmware` | Esqueleto — `platformio.ini` e `config.h.example` prontos, `src/main.cpp` a implementar |
-| `subscriber` | Esqueleto — pacotes, `Dockerfile` e config prontos, lógica a implementar |
+| `subscriber` | Esqueleto — o código real está na branch `Pox` e entra por merge depois |
 
 O README de cada um traz a seção de implementação, com a ordem sugerida e as
 dependências previstas.

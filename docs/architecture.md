@@ -9,18 +9,20 @@ essas mensagens em métricas Prometheus, que o Grafana consulta para os painéis
 ```
 ┌────────────────────┐
 │  esp32-firmware    │  Hardware físico
-│  ESP32 + BMP280    │  Lê o sensor via I²C, conecta no WiFi,
-└─────────┬──────────┘  publica JSON a cada 5 s
+│  ESP32 + BMP280    │  Duas tasks FreeRTOS: uma lê o sensor a cada 5 s
+└─────────┬──────────┘  e enfileira, outra cuida de WiFi/MQTT e publica
           │
-          │ MQTT publish  /telemetry  /health-check
-          │ TCP 1883
+          │ MQTT publish (QoS 0)
+          │   devices/{MAC}/telemetry
+          │   devices/{MAC}/health-check
           ▼
 ┌────────────────────┐
 │  mosquitto         │  Docker
-│  MQTT broker       │  Roteia mensagens, guarda LWT e retained
+│  MQTT broker       │  Roteia por dispositivo; guarda as retidas
 └─────────┬──────────┘
           │
-          │ MQTT subscribe  (QoS 1)
+          │ MQTT subscribe  devices/+/telemetry
+          │                 devices/+/health-check
           ▼
 ┌────────────────────┐
 │  subscriber        │  Docker (Go)
@@ -38,9 +40,33 @@ essas mensagens em métricas Prometheus, que o Grafana consulta para os painéis
           ▼
 ┌────────────────────┐
 │  grafana           │  Docker
-│  Visualização      │  Dashboard "Estação Meteorológica" provisionado
+│  Visualização      │  Painéis da estação
 └────────────────────┘
 ```
+
+O formato exato das mensagens está em [`mqtt-contract.md`](mqtt-contract.md),
+que descreve o firmware — a fonte da verdade é o código em
+[`services/esp32-firmware/`](../services/esp32-firmware/).
+
+## O firmware por dentro
+
+O ESP32 não roda um laço único. São duas tasks FreeRTOS fixadas no core 1,
+desacopladas por uma fila:
+
+| Task | Prioridade | O que faz |
+|---|---|---|
+| `vTaskSensors` | 1 | Lê o BMP280 a cada `SENSOR_READ_INTERVAL_MS` e enfileira um `SensorPayload` |
+| `vTaskWiFiMQTT` | 2 | Mantém WiFi e MQTT, consome a fila e publica telemetria e health-check |
+
+A fila (`xSensorQueue`, 10 posições) é o ponto importante: a amostragem do
+sensor acontece em cadência determinística, sem travar em latência de rede ou
+em reconexão de MQTT. Se a rede cair e a fila encher, a leitura mais nova é
+descartada com um aviso no serial — a task do sensor nunca bloqueia.
+
+A conexão WiFi tenta primeiro as credenciais do `secrets.ini`; falhando em
+15 s, cai para o portal cativo do WiFiManager (`ESP32-Setup-Portal-{sufixo do
+MAC}`, em `http://192.168.4.1`). Assim que conecta, sincroniza o relógio por
+SNTP para poder carimbar os payloads em UTC.
 
 ## Por que pull e não push
 
@@ -52,12 +78,12 @@ modelo idiomático do Prometheus e traz três vantagens neste projeto:
   serviço ou uma flag a mais para manter.
 - **O scrape é o health check.** Se o subscriber cair, o Prometheus registra
   `up{job="subscriber"} == 0` sem nenhum código adicional.
-- **Desacoplamento da taxa.** O ESP32 pode publicar a 5 s e o Prometheus
-  raspar a 15 s sem perder consistência — o gauge sempre tem o último valor.
+- **Desacoplamento da taxa.** O ESP32 publica a 5 s e o Prometheus raspa a
+  15 s sem perder consistência — o gauge sempre tem o último valor.
 
-O custo é que rajadas mais rápidas que o intervalo de scrape são achatadas
-(só o último valor entre dois scrapes vira ponto na série). Para uma estação
-meteorológica, cujas grandezas mudam devagar, isso é irrelevante.
+O custo é que rajadas mais rápidas que o intervalo de scrape são achatadas.
+Para uma estação meteorológica, cujas grandezas mudam devagar, isso é
+irrelevante.
 
 ## Topologia de máquinas
 
@@ -79,11 +105,13 @@ Ver [../README.md](../README.md#execução).
 
 ## Fluxo de dados de uma leitura
 
-1. O ESP32 lê o BMP280 via I²C (endereço `0x76`).
-2. Serializa o payload com ArduinoJson conforme
-   [mqtt-contract.md](mqtt-contract.md).
-3. Publica em `/telemetry` com QoS 1.
-4. O Mosquitto entrega ao subscriber, que tem uma assinatura ativa.
+1. `vTaskSensors` acorda no intervalo e lê o BMP280 via I²C (`0x76`, com
+   `0x77` como alternativa).
+2. Empacota em `SensorPayload` e envia para `xSensorQueue`.
+3. `vTaskWiFiMQTT` retira da fila, serializa com ArduinoJson conforme
+   [mqtt-contract.md](mqtt-contract.md) e publica em
+   `devices/{MAC}/telemetry`.
+4. O Mosquitto entrega ao subscriber, que assina `devices/+/telemetry`.
 5. O subscriber faz `json.Unmarshal`, valida faixas e descarta o que estiver
    fora do contrato (contabilizando em `weather_messages_invalid_total`).
 6. Em caso válido, atualiza `weather_temperature_celsius`,
@@ -92,12 +120,24 @@ Ver [../README.md](../README.md#execução).
 7. No próximo scrape, o Prometheus lê `/metrics` e grava os pontos.
 8. O Grafana consulta via PromQL e desenha.
 
+## Detecção de queda
+
+O firmware **não registra LWT**, então o broker não anuncia a saída de um
+dispositivo. A detecção é por ausência: sem mensagem válida de um `sensor_id`
+por mais de `SENSOR_STALE_AFTER` (padrão 90 s, o triplo do intervalo de
+health-check), o subscriber zera `weather_sensor_up` daquele dispositivo.
+
+O campo `status` do health-check é ortogonal a isso: ele diz se o **sensor**
+respondeu (`"OK"`/`"ERROR"`), não se o dispositivo está no ar.
+
 ## Decisões de projeto
 
 | Decisão | Alternativa descartada | Motivo |
 |---|---|---|
 | Métricas por pull (`/metrics`) | Pushgateway, `remote_write` | Menos peças móveis; ver acima |
 | Um `docker-compose.yml` por serviço | Um compose único | Cada serviço roda numa máquina separada; o compose da raiz é só para dev |
+| Tópico por dispositivo (`devices/{MAC}/…`) | Tópico único `/telemetry` | Permite filtrar um nó sem varrer o fluxo e habilita comando por difusão |
 | Contrato em `docs/mqtt-contract.md` | Contrato implícito no código | Firmware (C++) e subscriber (Go) não compartilham tipos; o documento é o acoplamento |
 | `file_sd_configs` no Prometheus | `static_configs` | Trocar o IP do subscriber não exige reiniciar o Prometheus |
-| Faixas validadas no subscriber | Confiar no firmware | Um sensor com defeito publica `-140 °C`; isso não deve virar série temporal |
+| Faixas validadas no subscriber | Confiar no firmware | Sem o BMP280, o firmware publica zeros; isso não deve virar série temporal |
+| Fila FreeRTOS entre sensor e rede | Ler e publicar no mesmo laço | A amostragem não pode travar em reconexão de MQTT |

@@ -1,92 +1,192 @@
 # Contrato MQTT
 
-Este documento é a **fonte da verdade** do sistema. O firmware do ESP32 produz
-exatamente o que está descrito aqui, e o subscriber Go consome exatamente isto.
-Qualquer mudança neste arquivo exige mudança nos dois lados.
+Este documento **descreve o firmware, não o contrário**. A fonte da verdade é o
+código em [`services/esp32-firmware/`](../services/esp32-firmware/) — em
+especial `src/mqtt_client.cpp` (montagem dos payloads) e `include/config.h`
+(definição dos tópicos). Se o firmware mudar, este documento é que se ajusta.
+
+Consumidores (subscriber Go, ferramentas de teste) devem seguir o que está aqui.
 
 ## Broker
 
-| Item | Valor |
-|---|---|
-| Protocolo | MQTT 3.1.1 |
-| Porta | `1883` (TCP, sem TLS) |
-| Autenticação | anônima (ambiente de laboratório — ver `services/mosquitto/README.md`) |
-| QoS usado | `1` (at least once) |
-| Retain | `false` em `/telemetry`, `true` em `/health-check` |
+| Item | Valor | Onde no código |
+|---|---|---|
+| Protocolo | MQTT 3.1.1 (PubSubClient) | `mqtt_client.cpp` |
+| Host/porta | `MQTT_BROKER_HOST:MQTT_BROKER_PORT` | `secrets.ini` → build flags |
+| Autenticação | `MQTT_USER` / `MQTT_PASS`, vazios = anônima | `secrets.ini` |
+| Client ID | o MAC do dispositivo | `connect()` |
+| QoS | `0` — PubSubClient só publica em QoS 0 | — |
+| LWT | **não há** — `connect()` usa a forma de 3 argumentos | `mqtt_client.cpp` |
+
+## Identidade do dispositivo (`sensor_id`)
+
+Todo dispositivo se identifica pelo MAC de fábrica, formatado por
+`getDeviceMacId()` em `include/config.h`:
+
+```cpp
+snprintf(macStr, sizeof(macStr), "%04X%08X", (uint16_t)(mac >> 32), (uint32_t)mac);
+```
+
+São **12 caracteres hexadecimais maiúsculos, sem separadores** — por exemplo
+`A1B2C3D4E5F6`. Não é o formato `AA:BB:CC:DD:EE:FF` do `WiFi.macAddress()`.
+
+O mesmo valor é usado como `sensor_id` no payload, como client ID no broker e
+como segmento dos tópicos.
 
 ## Tópicos
 
+Os tópicos são **hierárquicos e por dispositivo**, montados em
+`SystemMQTTClient::init()`:
+
+```cpp
+telemetryTopic   = MQTT_TOPIC_BASE + "/" + macId + "/" + "telemetry";
+healthCheckTopic = MQTT_TOPIC_BASE + "/" + macId + "/" + "health-check";
+commandTopic     = MQTT_TOPIC_BASE + "/" + macId + "/" + "commands";
+broadcastTopic   = MQTT_TOPIC_BASE + "/" + "broadcast";
+```
+
+`MQTT_TOPIC_BASE` vem de `mqtt_topic_base` no `secrets.ini` (padrão: `devices`).
+
 | Tópico | Direção | Publicador | Assinante |
 |---|---|---|---|
-| `/telemetry` | ESP32 → broker | `esp32-firmware` | `subscriber` |
-| `/health-check` | ESP32 → broker | `esp32-firmware` | `subscriber` |
+| `devices/{MAC}/telemetry` | ESP32 → broker | firmware | `subscriber` |
+| `devices/{MAC}/health-check` | ESP32 → broker | firmware | `subscriber` |
+| `devices/{MAC}/commands` | broker → ESP32 | (futuro: OTA) | firmware |
+| `devices/broadcast` | broker → ESP32 | (futuro) | firmware |
 
-## `/telemetry`
+Como o MAC entra no tópico, **quem consome precisa usar wildcard**:
 
-Publicado a cada `PUBLISH_INTERVAL_MS` (padrão: 5000 ms) com a leitura do BMP280.
+```
+devices/+/telemetry
+devices/+/health-check
+```
+
+Esse desenho permite filtrar um nó específico sem varrer o fluxo inteiro e
+suporta comando por difusão. O raciocínio completo está no
+[README do firmware](../services/esp32-firmware/README.md#1-mqtt-topic-architecture).
+
+## `devices/{MAC}/telemetry`
+
+Publicado a cada `SENSOR_READ_INTERVAL_MS` (padrão 5000 ms), quando há leitura
+na fila FreeRTOS e o MQTT está conectado.
 
 ```json
 {
-  "sensor_id": "24:6F:28:AA:BB:CC",
+  "sensor_id": "A1B2C3D4E5F6",
   "sensor_model": "BMP280",
-  "temperature": 24.83,
-  "pressure": 1013.42,
-  "altitude": 118.7,
-  "timestamp": "2026-08-31T14:03:21Z"
+  "temperature": 24.5,
+  "pressure": 1013.25,
+  "altitude": 540.2,
+  "timestamp": 1787960400
 }
 ```
 
-| Campo | Tipo | Unidade | Obrigatório | Faixa aceita |
-|---|---|---|---|---|
-| `sensor_id` | string | — | sim | não vazio (MAC do ESP32) |
-| `sensor_model` | string | — | sim | não vazio (`BMP280`) |
-| `temperature` | number | °C | sim | `-100` a `150` |
-| `pressure` | number | hPa | sim | `300` a `1100` |
-| `altitude` | number | m | sim | `-500` a `10000` |
-| `timestamp` | string \| number | UTC | sim | RFC 3339 (`2026-08-31T14:03:21Z`) **ou** unix seconds |
+| Campo | Tipo | Unidade | Origem |
+|---|---|---|---|
+| `sensor_id` | string | — | `getDeviceMacId()` |
+| `sensor_model` | string | — | literal `"BMP280"` |
+| `temperature` | number | °C | `bmp.readTemperature()` |
+| `pressure` | number | hPa | `bmp.readPressure() / 100.0` |
+| `altitude` | number | m | `bmp.readAltitude(1013.25)` |
+| `timestamp` | number | s | ver abaixo |
 
-As faixas acima são validadas pelo subscriber. Mensagem fora da faixa é
-descartada e contabilizada em `weather_messages_invalid_total`.
+### `timestamp` é sempre um número
 
-O campo `timestamp` aceita as duas formas porque o ESP32 publica RFC 3339 depois
-de sincronizar com NTP, mas cai para unix seconds (uptime) se o NTP falhar.
+É **unix epoch em segundos**, nunca uma string. O firmware degrada em silêncio
+quando o NTP não sincronizou:
 
-## `/health-check`
+```cpp
+uint64_t timestampUtc = (now > 1000000000) ? (uint64_t)now
+                                           : (uint64_t)(data.timestamp_ms / 1000);
+```
 
-Publicado com `retain: true` logo após cada conexão e depois a cada
-`HEALTH_INTERVAL_MS` (padrão: 30000 ms).
+Ou seja: com NTP, é a hora UTC real; sem NTP, é o **uptime da placa em
+segundos** — um número pequeno, na casa das dezenas ou centenas. Quem consome
+não deve confiar cegamente neste campo para ordenar séries; o instante de
+recepção é mais confiável.
+
+### Leitura inválida ainda é publicada
+
+Se o BMP280 não inicializou, `SensorManager::readData()` devolve
+`temperature`, `pressure` e `altitude` **zerados** com `isValid = false`, e a
+telemetria é publicada assim mesmo. Pressão `0.0` hPa é fisicamente impossível
+— é o sinal de sensor ausente. Cabe ao consumidor descartar essas leituras;
+o `status` do health-check confirma (`"ERROR"`).
+
+## `devices/{MAC}/health-check`
+
+Publicado a cada `HEALTH_CHECK_INTERVAL_MS` (padrão 30000 ms) e também uma vez
+logo após cada conexão bem-sucedida ao broker.
 
 ```json
 {
-  "sensor_id": "24:6F:28:AA:BB:CC",
-  "status": "online",
-  "uptime_s": 3721,
-  "rssi": -58
+  "sensor_id": "A1B2C3D4E5F6",
+  "sensor_model": "BMP280",
+  "status": "OK",
+  "rssi": -58,
+  "free_heap": 210376,
+  "uptime_ms": 3721000,
+  "timestamp": 1787960400
 }
 ```
 
-| Campo | Tipo | Unidade | Obrigatório | Valores |
-|---|---|---|---|---|
-| `sensor_id` | string | — | sim | não vazio |
-| `status` | string | — | sim | `online` \| `offline` |
-| `uptime_s` | number | s | não | `>= 0` |
-| `rssi` | number | dBm | não | típico `-100` a `0` |
+| Campo | Tipo | Unidade | Valores / origem |
+|---|---|---|---|
+| `sensor_id` | string | — | `getDeviceMacId()` |
+| `sensor_model` | string | — | literal `"BMP280"` |
+| `status` | string | — | **`"OK"` ou `"ERROR"`** |
+| `rssi` | number | dBm | `WiFi.RSSI()` |
+| `free_heap` | number | bytes | `ESP.getFreeHeap()` |
+| `uptime_ms` | number | **ms** | `millis()` |
+| `timestamp` | number | s | mesma regra da telemetria |
 
-### Last Will and Testament
+Dois detalhes que mudam a leitura do campo `status`:
 
-O ESP32 registra um LWT no broker. Se a conexão cair sem `DISCONNECT` limpo, o
-broker publica automaticamente em `/health-check`:
+- Os valores são `"OK"`/`"ERROR"`, **não** `"online"`/`"offline"`. Referem-se à
+  saúde do **sensor**, não da conexão.
+- O health-check disparado dentro de `connect()` passa `true` fixo, então o
+  primeiro após cada reconexão relata `"OK"` mesmo com o BMP280 falhando. Só os
+  periódicos refletem `isValid` de verdade.
 
-```json
-{ "sensor_id": "24:6F:28:AA:BB:CC", "status": "offline" }
-```
+`uptime_ms` está em **milissegundos** — divida por 1000 antes de comparar com
+qualquer coisa em segundos.
 
-Isso faz `weather_sensor_up` ir a `0` sem esperar o timeout de staleness.
+## Detecção de dispositivo offline
 
-## Detecção de sensor offline
+**Não há LWT.** O firmware chama
+`mqttClient.connect(clientId, MQTT_USER, MQTT_PASS)`, a forma de três
+argumentos, que não registra Last Will. Se a placa cair, o broker não avisa
+ninguém.
 
-O subscriber marca `weather_sensor_up = 0` quando:
+A única forma de detectar queda é por **ausência**: se não chegar mensagem de
+um `sensor_id` por mais que `SENSOR_STALE_AFTER` (padrão 90 s, três vezes o
+intervalo de health-check), o consumidor deve marcá-lo como offline. É assim
+que o `subscriber` calcula `weather_sensor_up`.
 
-1. chega um `/health-check` com `status != "online"` (inclusive o LWT); **ou**
-2. passam mais de `SENSOR_STALE_AFTER` (padrão: 90s) sem nenhuma mensagem
-   válida daquele `sensor_id`.
+## Observação: mensagens são retidas
+
+O firmware publica com `mqttClient.publish(topic, buffer, n)`, onde `buffer` é
+`char[256]` e `n` é o `size_t` devolvido por `serializeJson`.
+
+Entre as sobrecargas do PubSubClient, `(const char*, const uint8_t*, unsigned
+int)` não é viável — `char*` não converte implicitamente para `uint8_t*`. A
+escolhida é `(const char*, const char*, boolean)`, e `n` (sempre > 0) vira
+`retained = true`.
+
+Consequência prática: **toda telemetria e todo health-check ficam retidos no
+broker**. Quem assinar `devices/+/telemetry` recebe de imediato a última
+mensagem de cada dispositivo, mesmo que seja antiga. O conteúdo do payload sai
+correto, porque `serializeJson` termina o buffer em `\0`.
+
+Isso aparenta ser não intencional (a intenção do `n` era o comprimento), mas o
+firmware é a fonte da verdade e **não foi alterado**. Consumidores devem contar
+com mensagens retidas na primeira assinatura.
+
+## Referência cruzada
+
+| Assunto | Onde |
+|---|---|
+| Arquitetura do firmware, fluxograma, decisões | [`services/esp32-firmware/README.md`](../services/esp32-firmware/README.md) |
+| Comandos OTA em `devices/{MAC}/commands` | [`services/esp32-firmware/OTA_IMPLEMENTATION_GUIDE.md`](../services/esp32-firmware/OTA_IMPLEMENTATION_GUIDE.md) |
+| Como o subscriber traduz isso em métricas | [`services/subscriber/README.md`](../services/subscriber/README.md) |
+| Fluxo ponta a ponta | [`architecture.md`](architecture.md) |

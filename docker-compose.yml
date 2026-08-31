@@ -38,9 +38,9 @@ services:
     environment:
       - MQTT_BROKER_URL=tcp://mosquitto:1883
       - MQTT_CLIENT_ID=${MQTT_CLIENT_ID:-subscriber-estacao}
-      - MQTT_TELEMETRY_TOPIC=${MQTT_TELEMETRY_TOPIC:-/telemetry}
-      - MQTT_HEALTH_TOPIC=${MQTT_HEALTH_TOPIC:-/health-check}
-      - MQTT_QOS=${MQTT_QOS:-1}
+      - MQTT_TELEMETRY_TOPIC=${MQTT_TELEMETRY_TOPIC:-devices/+/telemetry}
+      - MQTT_HEALTH_TOPIC=${MQTT_HEALTH_TOPIC:-devices/+/health-check}
+      - MQTT_QOS=${MQTT_QOS:-0}
       - METRICS_ADDR=:2112
       - SENSOR_STALE_AFTER=${SENSOR_STALE_AFTER:-90s}
       - LOG_LEVEL=${LOG_LEVEL:-info}

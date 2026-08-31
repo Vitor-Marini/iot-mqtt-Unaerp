@@ -8,11 +8,10 @@ Imagem: [`eclipse-mosquitto:2.0`](https://hub.docker.com/_/eclipse-mosquitto).
 ## O que faz
 
 - Aceita conexões MQTT 3.1.1 em `0.0.0.0:1883`.
-- Roteia `/telemetry` e `/health-check` (ver
+- Roteia `devices/{MAC}/telemetry` e `devices/{MAC}/health-check` (ver
   [`docs/mqtt-contract.md`](../../docs/mqtt-contract.md)).
-- Guarda a última mensagem **retained** de `/health-check`, para que o
-  subscriber saiba o estado da estação assim que sobe.
-- Publica o **LWT** do ESP32 quando a conexão dele cai sem `DISCONNECT` limpo.
+- Guarda as mensagens **retidas** de cada dispositivo, então quem assina
+  recebe de imediato a última leitura conhecida de cada um.
 - Persiste sessões QoS 1 e mensagens retained em volume, sobrevivendo a
   reinícios do container.
 
@@ -67,11 +66,11 @@ Teste ponta a ponta de dentro do container (não precisa instalar nada no host):
 
 ```bash
 # Terminal 1 — assinar
-docker compose exec mosquitto mosquitto_sub -t '/telemetry' -v
+docker compose exec mosquitto mosquitto_sub -t 'devices/+/telemetry' -v
 
 # Terminal 2 — publicar uma leitura de teste
-docker compose exec mosquitto mosquitto_pub -t '/telemetry' -m \
-  '{"sensor_id":"teste","sensor_model":"BMP280","temperature":25.1,"pressure":1013.2,"altitude":120.5,"timestamp":"2026-08-31T14:03:21Z"}'
+docker compose exec mosquitto mosquitto_pub -t 'devices/A1B2C3D4E5F6/telemetry' -m \
+  '{"sensor_id":"A1B2C3D4E5F6","sensor_model":"BMP280","temperature":24.5,"pressure":1013.25,"altitude":540.2,"timestamp":1787960400}'
 ```
 
 O terminal 1 deve imprimir a mensagem. Isso valida o broker sem depender do
@@ -80,7 +79,7 @@ ESP32 nem do subscriber.
 Ver o estado atual da estação (mensagem retained):
 
 ```bash
-docker compose exec mosquitto mosquitto_sub -t '/health-check' -v -C 1
+docker compose exec mosquitto mosquitto_sub -t 'devices/+/health-check' -v -C 1
 ```
 
 Estatísticas internas do broker:
