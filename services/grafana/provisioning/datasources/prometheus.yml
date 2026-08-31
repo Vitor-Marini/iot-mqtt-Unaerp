@@ -1,0 +1,17 @@
+# Datasource provisionado no boot. A URL vem de variável de ambiente porque o
+# Prometheus roda em outra máquina — o Grafana interpola ${VAR} em arquivos de
+# provisioning.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: ${PROMETHEUS_URL}
+    isDefault: true
+    editable: false
+    jsonData:
+      # Deve casar com o scrape_interval do serviço prometheus.
+      timeInterval: 15s
+      httpMethod: POST

@@ -1,0 +1,9 @@
+[
+  {
+    "targets": ["subscriber:2112"],
+    "labels": {
+      "servico": "subscriber",
+      "ambiente": "dev"
+    }
+  }
+]

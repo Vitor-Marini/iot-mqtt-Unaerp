@@ -1,0 +1,89 @@
+# Ambiente de DESENVOLVIMENTO: sobe os quatro serviços Docker numa rede única,
+# onde os nomes resolvem por DNS (mosquitto, subscriber, prometheus, grafana).
+#
+# NÃO é o modelo de produção deste projeto. Em produção cada serviço roda numa
+# máquina separada, com seu próprio docker-compose.yml em services/<nome>/.
+# Ver README.md → "Execução".
+
+name: estacao-meteorologica
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+    volumes:
+      - ./services/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -t '$$SYS/broker/uptime' -C 1 -W 3 >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  subscriber:
+    build:
+      context: ./services/subscriber
+      dockerfile: Dockerfile
+    image: iot-subscriber:local
+    container_name: subscriber
+    restart: unless-stopped
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      - MQTT_BROKER_URL=tcp://mosquitto:1883
+      - MQTT_CLIENT_ID=${MQTT_CLIENT_ID:-subscriber-estacao}
+      - MQTT_TELEMETRY_TOPIC=${MQTT_TELEMETRY_TOPIC:-/telemetry}
+      - MQTT_HEALTH_TOPIC=${MQTT_HEALTH_TOPIC:-/health-check}
+      - MQTT_QOS=${MQTT_QOS:-1}
+      - METRICS_ADDR=:2112
+      - SENSOR_STALE_AFTER=${SENSOR_STALE_AFTER:-90s}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "${SUBSCRIBER_PORT:-2112}:2112"
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    restart: unless-stopped
+    depends_on:
+      - subscriber
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}"
+      - "--web.enable-lifecycle"
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./services/prometheus/config:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - PROMETHEUS_URL=http://prometheus:9090
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./services/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./services/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  prometheus_data:
+  grafana_data:

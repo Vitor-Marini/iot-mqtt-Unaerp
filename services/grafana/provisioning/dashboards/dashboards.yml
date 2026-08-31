@@ -1,0 +1,15 @@
+# Carrega todo dashboard .json encontrado em /var/lib/grafana/dashboards.
+apiVersion: 1
+
+providers:
+  - name: estacao-meteorologica
+    orgId: 1
+    folder: Estação Meteorológica
+    type: file
+    disableDeletion: false
+    # Relê o diretório periodicamente: adicionar um .json não exige restart.
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

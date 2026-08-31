@@ -1,0 +1,42 @@
+// Copie este arquivo para `include/config.h` e preencha com os valores da sua
+// rede. `config.h` está no .gitignore: nunca versione credenciais.
+//
+//   cp include/config.h.example include/config.h
+
+#pragma once
+
+// ---------------------------------------------------------------- WiFi ------
+#define WIFI_SSID       "sua-rede"
+#define WIFI_PASSWORD   "sua-senha"
+
+// ---------------------------------------------------------------- MQTT ------
+// IP ou hostname da máquina que roda o serviço `mosquitto`.
+#define MQTT_HOST       "192.168.0.10"
+#define MQTT_PORT       1883
+
+// Deixe as duas vazias para conexão anônima (padrão do broker deste projeto).
+#define MQTT_USERNAME   ""
+#define MQTT_PASSWORD   ""
+
+#define MQTT_TOPIC_TELEMETRY  "/telemetry"
+#define MQTT_TOPIC_HEALTH     "/health-check"
+
+// -------------------------------------------------------------- Sensor ------
+// Endereço I2C do BMP280: 0x76 (SDO em GND) ou 0x77 (SDO em VCC).
+#define BMP280_I2C_ADDRESS  0x76
+// Pinos I2C. No ESP32 DevKit padrão: SDA=21, SCL=22.
+#define I2C_SDA_PIN     21
+#define I2C_SCL_PIN     22
+
+// Pressão ao nível do mar (hPa) usada para calcular a altitude.
+// Ajuste para a leitura da estação meteorológica mais próxima.
+#define SEA_LEVEL_HPA   1013.25f
+
+// ------------------------------------------------------------ Intervalos ----
+#define PUBLISH_INTERVAL_MS   5000UL    // /telemetry
+#define HEALTH_INTERVAL_MS   30000UL    // /health-check
+
+// ----------------------------------------------------------------- NTP ------
+// Usado para carimbar o payload em RFC 3339 UTC. Se a sincronização falhar,
+// o firmware cai para unix seconds derivado do uptime (ver docs/mqtt-contract.md).
+#define NTP_SERVER      "pool.ntp.org"

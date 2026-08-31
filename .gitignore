@@ -1,3 +1,25 @@
+# Variáveis de ambiente — podem conter credenciais
+.env
+.env.local
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# PlatformIO (esp32-firmware)
+.pio/
+
+# Go (subscriber)
+bin/
+
+# Dados de container montados localmente
+services/*/data/
+services/*/log/
 # Python-generated files
 __pycache__/
 *.py[oc]
