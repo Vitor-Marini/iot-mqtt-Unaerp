@@ -1,0 +1,21 @@
+services:
+  subscriber:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: iot-subscriber:local
+    container_name: subscriber
+    restart: unless-stopped
+    env_file:
+      # Criado a partir de .env.example. Opcional: sem ele valem os defaults
+      # do proprio subscriber.
+      - path: .env
+        required: false
+    ports:
+      - "${SUBSCRIBER_PORT:-2112}:2112"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:2112/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

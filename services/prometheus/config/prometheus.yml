@@ -1,0 +1,23 @@
+# Prometheus — estação meteorológica
+# Referência: https://prometheus.io/docs/prometheus/latest/configuration/configuration/
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    projeto: estacao-meteorologica
+
+scrape_configs:
+  # O próprio Prometheus, para monitorar a saúde da coleta.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # O subscriber roda em outra máquina, então o alvo fica num arquivo à parte:
+  # o Prometheus recarrega `targets/*.json` sozinho, sem reiniciar o serviço.
+  - job_name: subscriber
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/*.json
+        refresh_interval: 30s

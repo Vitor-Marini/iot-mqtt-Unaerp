@@ -1,10 +1,22 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+# Variáveis de ambiente — podem conter credenciais
+.env
+.env.local
 
-# Virtual environments
-.venv
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# PlatformIO (esp32-firmware)
+.pio/
+
+# Go (subscriber)
+bin/
+
+# Dados de container montados localmente
+services/*/data/
+services/*/log/

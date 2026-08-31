@@ -1,0 +1,4 @@
+.pio/
+.vscode/
+# Contém credenciais de WiFi — gerado a partir de config.h.example
+include/config.h

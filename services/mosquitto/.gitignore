@@ -1,0 +1,5 @@
+# Dados e logs vivem em volumes nomeados do Docker, mas o bind-mount local
+# pode criar estes diretórios em execuções manuais.
+data/
+log/
+password.txt
