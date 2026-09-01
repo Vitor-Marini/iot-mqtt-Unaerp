@@ -1,13 +1,17 @@
 package main
 
 import (
+	"fmt"
 	"subscriber/models"
+	"time"
+	"context"
+	"github.com/influxdata/influxdb-client-go/v2/api/write"
 )
 
 func ProcessTelemetry(telemetryChan <-chan models.Telemetry) {
 
 	for telemetry := range telemetryChan {
-		/*
+		
 		fmt.Println("========== TELEMETRY ==========")
 		fmt.Println("Sensor ID:", telemetry.SensorID)
 		fmt.Println("Sensor Model:", telemetry.SensorModel)
@@ -16,29 +20,40 @@ func ProcessTelemetry(telemetryChan <-chan models.Telemetry) {
 		fmt.Println("Altitude:", telemetry.Altitude)
 		fmt.Println("Timestamp:", telemetry.Timestamp)
 		fmt.Println("===============================")
-	*/
 
-		temperatureMetric.WithLabelValues(
-			telemetry.SensorID,
-			telemetry.SensorModel,
-		).Set(telemetry.Temperature)
+		tags := map[string]string{
+			"sensor_id":    telemetry.SensorID,
+			"sensor_model": telemetry.SensorModel,
+		}
 
-		pressureMetric.WithLabelValues(
-			telemetry.SensorID,
-			telemetry.SensorModel,
-		).Set(telemetry.Pressure)
+		fields := map[string]interface{}{
+			"temperature": telemetry.Temperature,
+			"pressure":    telemetry.Pressure,
+			"altitude":    telemetry.Altitude,
+		}
 
-		altitudeMetric.WithLabelValues(
-			telemetry.SensorID,
-			telemetry.SensorModel,
-		).Set(telemetry.Altitude)
+		point := write.NewPoint(
+			"telemetry",
+			tags,
+			fields,
+			time.Unix(telemetry.Timestamp, 0),
+		)
+
+
+		if err := influxWriteAPI.WritePoint(
+			context.Background(),
+			point,
+		); err != nil {
+			fmt.Println("Erro ao escrever healthcheck no InfluxDB:", err)
+		}
+	
 	}
 }
 
 func ProcessHealthcheck(healthcheckChan <-chan models.Healthcheck) {
 
 	for healthcheck := range healthcheckChan {
-		/*
+		
 		fmt.Println("========= HEALTHCHECK =========")
 		fmt.Println("Sensor ID:", healthcheck.SensorID)
 		fmt.Println("Sensor Model:", healthcheck.SensorModel)
@@ -48,7 +63,7 @@ func ProcessHealthcheck(healthcheckChan <-chan models.Healthcheck) {
 		fmt.Println("Uptime:", healthcheck.UptimeMs)
 		fmt.Println("Timestamp:", healthcheck.Timestamp)
 		fmt.Println("===============================")
-		*/
+		
 
 		status := 0.0
 
@@ -56,24 +71,30 @@ func ProcessHealthcheck(healthcheckChan <-chan models.Healthcheck) {
 			status = 1.0
 		}
 
-		statusMetric.WithLabelValues(
-			healthcheck.SensorID,
-			healthcheck.SensorModel,
-		).Set(status)
+		tags := map[string]string{
+			"sensor_id":    healthcheck.SensorID,
+			"sensor_model": healthcheck.SensorModel,
+		}
 
-		rssiMetric.WithLabelValues(
-			healthcheck.SensorID,
-			healthcheck.SensorModel,
-		).Set(float64(healthcheck.RSSI))
+		fields := map[string]interface{}{
+			"status":    status,
+			"rssi":      healthcheck.RSSI,
+			"free_heap": healthcheck.FreeHeap,
+			"uptime_ms": healthcheck.UptimeMs,
+		}
 
-		freeHeapMetric.WithLabelValues(
-			healthcheck.SensorID,
-			healthcheck.SensorModel,
-		).Set(float64(healthcheck.FreeHeap))
+		point := write.NewPoint(
+			"healthcheck",
+			tags,
+			fields,
+			time.UnixMilli(healthcheck.Timestamp),
+		)
 
-		uptimeMetric.WithLabelValues(
-			healthcheck.SensorID,
-			healthcheck.SensorModel,
-		).Set(float64(healthcheck.UptimeMs))
+		if err := influxWriteAPI.WritePoint(
+			context.Background(),
+			point,
+		); err != nil {
+			fmt.Println("Erro ao escrever healthcheck no InfluxDB:", err)
+		}
 	}
 }

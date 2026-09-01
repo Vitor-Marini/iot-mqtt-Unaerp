@@ -1,23 +1,41 @@
 package main
 
 import (
-	"fmt"
-	"log"
-	"net/http"
+	"os"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
-func StartMetricsServer() {
 
-	http.Handle(
-		"/metrics",
-		promhttp.Handler(),
+var influxClient influxdb2.Client
+var influxWriteAPI = influxClient.WriteAPIBlocking("", "")
+
+
+
+const (
+	influxOrg    = "esp32"
+	influxBucket = "sensors"
+)
+
+func InitInfluxDB() {
+	url := os.Getenv("INFLUX_HOST")
+	token := os.Getenv("TOKEN_INFLUX")
+	org := os.Getenv("INFLUX_ORG")
+	bucket := os.Getenv("INFLUX_BUCKET")
+
+	influxClient = influxdb2.NewClient(url, token)
+
+	influxWriteAPI = influxClient.WriteAPIBlocking(
+		org,
+		bucket,
 	)
 
-	fmt.Println("Metrics: http://localhost:8080/metrics")
 
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatal(err)
-	}
 }
+
+
+func CloseInfluxDB() {
+	influxClient.Close()
+}
+
+//Irei escrever usando o writeBlocking, para deixar mais escalavel precisa usar o writepoint async, testando eficiencia

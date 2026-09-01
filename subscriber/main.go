@@ -15,11 +15,9 @@ import (
 
 func main () {
 
-	//Registro das metricas do prometheus
-	RegisterMetrics()
+	InitInfluxDB()
+	defer CloseInfluxDB()
 
-	//inicia o server que o prometheus vai ler em um routine separada
-	go StartMetricsServer()
 
 	//criação dos canais de comunicação das goroutines
 	telemetryChan := make(chan models.Telemetry)
@@ -60,8 +58,8 @@ func main () {
 		fmt.Println("Conectado ao Mosquitto!")
 
 		topics := map[string]byte{
-			"esp32/telemetry":   0,
-			"esp32/healthcheck": 0,
+			"devices/+/telemetry":   0,
+			"devices/+/healthcheck": 0,
 		}
 
 		//função de subscriber -> realizar a inscrição no topico
@@ -86,7 +84,7 @@ func main () {
 		}
 
 		fmt.Println("Inscrito nos tópicos:")
-		fmt.Println(" - esp32/telemetry")
+		fmt.Println(" - devices/#/telemetry")
 		fmt.Println(" - esp32/healthcheck")
 	}
 

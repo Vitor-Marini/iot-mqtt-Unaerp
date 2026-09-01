@@ -6,6 +6,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"subscriber/models"
 	"encoding/json"
+	"strings"
 )
 
 func messageHandler(
@@ -15,9 +16,20 @@ func messageHandler(
 	healthcheckChan chan<- models.Healthcheck,
 ) {
 
-	switch msg.Topic() {
+	topic := msg.Topic()
 
-	case "esp32/telemetry":
+	switch {
+	case strings.HasPrefix(topic, "devices/") &&
+		strings.HasSuffix(topic, "/telemetry"):
+
+		parts := strings.Split(topic, "/")
+
+		if len(parts) != 3 {
+			log.Println("Tópico de telemetry inválido:", topic)
+			return
+		}
+
+		deviceID := parts[1]
 
 		var telemetry models.Telemetry
 
@@ -26,9 +38,25 @@ func messageHandler(
 			return
 		}
 
+		log.Printf(
+			"Telemetry recebida do dispositivo %s",
+			deviceID,
+		)
+
+		// Aqui você pode associar o deviceID à telemetry
 		telemetryChan <- telemetry
 
-	case "esp32/healthcheck":
+	case strings.HasPrefix(topic, "devices/") &&
+		strings.HasSuffix(topic, "/healthcheck"):
+
+		parts := strings.Split(topic, "/")
+
+		if len(parts) != 3 {
+			log.Println("Tópico de telemetry inválido:", topic)
+			return
+		}
+
+		deviceID := parts[1]
 
 		var healthcheck models.Healthcheck
 
@@ -37,10 +65,15 @@ func messageHandler(
 			return
 		}
 
+		log.Printf(
+			"Healthcheck recebida do dispositivo %s",
+			deviceID,
+		)
+
 		healthcheckChan <- healthcheck
 
 	default:
 
-		log.Println("Tópico desconhecido:", msg.Topic())
+		log.Println("Tópico desconhecido:", topic)
 	}
 }
