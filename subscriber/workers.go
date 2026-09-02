@@ -87,7 +87,7 @@ func ProcessHealthcheck(healthcheckChan <-chan models.Healthcheck) {
 			"healthcheck",
 			tags,
 			fields,
-			time.UnixMilli(healthcheck.Timestamp),
+			time.Unix(healthcheck.Timestamp, 0),
 		)
 
 		if err := influxWriteAPI.WritePoint(

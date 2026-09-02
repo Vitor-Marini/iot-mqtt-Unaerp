@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"fmt"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"subscriber/models"
@@ -15,6 +16,10 @@ func messageHandler(
 	telemetryChan chan<- models.Telemetry,
 	healthcheckChan chan<- models.Healthcheck,
 ) {
+
+
+	fmt.Println("TOPICO:", msg.Topic())
+	fmt.Println("PAYLOAD:", string(msg.Payload()))
 
 	topic := msg.Topic()
 

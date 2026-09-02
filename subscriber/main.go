@@ -15,9 +15,6 @@ import (
 
 func main () {
 
-	InitInfluxDB()
-	defer CloseInfluxDB()
-
 
 	//criação dos canais de comunicação das goroutines
 	telemetryChan := make(chan models.Telemetry)
@@ -30,6 +27,10 @@ func main () {
 	if err := godotenv.Load(); err != nil {
 		log.Println("Aviso: arquivo .env não encontrado")
 	}
+
+
+	InitInfluxDB()
+	defer CloseInfluxDB()
 
 	host := getEnv("MQTT_HOST", "localhost")
 	port := getEnv("MQTT_PORT", "1883")
@@ -46,16 +47,12 @@ func main () {
 	opts.AddBroker(broker)
 	opts.SetClientID(string(SUBSCRIBER_ID))
 
-	opts.OnConnect = func(c mqtt.Client) {
-		fmt.Println("Conectando ao Mosquitto")
-
-		fmt.Println("Registrando topicos")
-	}
-
 
 	//função que roda ao subscriber se conectar ao mosquitto
 	opts.OnConnect = func(client mqtt.Client) {
 		fmt.Println("Conectado ao Mosquitto!")
+
+		fmt.Println("Registrando topicos")
 
 		topics := map[string]byte{
 			"devices/+/telemetry":   0,
@@ -84,8 +81,8 @@ func main () {
 		}
 
 		fmt.Println("Inscrito nos tópicos:")
-		fmt.Println(" - devices/#/telemetry")
-		fmt.Println(" - esp32/healthcheck")
+		fmt.Println(" - devices/+/telemetry")
+		fmt.Println(" - devices/+/healthcheck")
 	}
 
 
