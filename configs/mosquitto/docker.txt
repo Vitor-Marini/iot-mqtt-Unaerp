@@ -1,0 +1,5 @@
+docker run -d \
+  --name mosquitto \
+  -p 0.0.0.0:1883:1883 \
+  -v "/home/felipegranvile/Documentos/GitHub/iot-mqtt-Unaerp/configs/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf" \
+  eclipse-mosquitto:2
