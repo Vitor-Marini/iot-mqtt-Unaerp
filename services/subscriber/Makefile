@@ -1,33 +1,34 @@
-.PHONY: help build run test lint tidy docker-build up down logs
+.PHONY: help build run tidy fmt vet docker-build up down logs mock
 
-help: ## Lista os alvos disponíveis
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+help: ## Lista os alvos disponiveis
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sed -e 's/:.*## /\t/' | column -t -s "$$(printf '\t')"
 
-build: ## Compila o binário em bin/subscriber
-	go build -o bin/subscriber ./cmd/subscriber
+build: ## Compila o binario em bin/subscriber
+	go build -o bin/subscriber .
 
-run: ## Executa localmente (usa as variáveis do ambiente atual)
-	go run ./cmd/subscriber
-
-test: ## Roda os testes unitários
-	go test ./... -race -cover
-
-lint: ## Vet + verificação de formatação
-	go vet ./...
-	@test -z "$$(gofmt -l .)" || (echo "arquivos mal formatados:"; gofmt -l .; exit 1)
+run: ## Executa localmente (le o .env do diretorio atual)
+	go run .
 
 tidy: ## Sincroniza go.mod/go.sum
 	go mod tidy
 
-docker-build: ## Constrói a imagem Docker
+fmt: ## Formata o codigo
+	go fmt ./...
+
+vet: ## Analise estatica
+	go vet ./...
+
+docker-build: ## Constroi a imagem Docker
 	docker build -t iot-subscriber:local .
 
-up: ## Sobe o serviço isolado
+up: ## Sobe o servico isolado
 	docker compose up -d --build
 
-down: ## Derruba o serviço
+down: ## Derruba o servico
 	docker compose down
 
 logs: ## Acompanha os logs
 	docker compose logs -f
+
+mock: ## Publica telemetria falsa no broker local (precisa de mosquitto_pub)
+	./mock_esp32.sh

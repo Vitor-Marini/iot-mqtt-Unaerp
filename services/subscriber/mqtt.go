@@ -52,7 +52,7 @@ func messageHandler(
 		telemetryChan <- telemetry
 
 	case strings.HasPrefix(topic, "devices/") &&
-		strings.HasSuffix(topic, "/healthcheck"):
+		strings.HasSuffix(topic, "/health-check"):
 
 		parts := strings.Split(topic, "/")
 

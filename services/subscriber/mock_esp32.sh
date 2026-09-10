@@ -77,7 +77,7 @@ do
         mosquitto_pub \
             -h localhost \
             -p 1883 \
-            -t "devices/$SENSOR_ID/healthcheck" \
+            -t "devices/$SENSOR_ID/health-check" \
             -m "$HEALTHCHECK_JSON"
 
         echo "[HEALTHCHECK] status=OK rssi=-65 uptime=${UPTIME}s"

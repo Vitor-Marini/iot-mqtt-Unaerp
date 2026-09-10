@@ -1,7 +1,11 @@
-.git
+# NUNCA copiar o .env para a imagem: contem o token do InfluxDB.
 .env
+.git
 README.md
+NOTES.md
 Dockerfile
+.dockerignore
 docker-compose.yml
 Makefile
+mock_esp32.sh
 bin/

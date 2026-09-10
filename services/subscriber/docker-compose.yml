@@ -1,3 +1,5 @@
+# Sobe SOMENTE o subscriber, para deploy em maquina propria.
+# Para subir a stack inteira numa maquina, use o docker-compose.yml da raiz.
 services:
   subscriber:
     build:
@@ -6,16 +8,13 @@ services:
     image: iot-subscriber:local
     container_name: subscriber
     restart: unless-stopped
+    # Obrigatorio: INFLUX_HOST, TOKEN_INFLUX, INFLUX_ORG e INFLUX_BUCKET nao
+    # tem valor padrao no codigo. Sem .env o servico sobe e falha nas escritas.
     env_file:
-      # Criado a partir de .env.example. Opcional: sem ele valem os defaults
-      # do proprio subscriber.
-      - path: .env
-        required: false
-    ports:
-      - "${SUBSCRIBER_PORT:-2112}:2112"
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:2112/metrics"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      - .env
+    # Sem `ports`: o subscriber nao serve HTTP, so faz conexoes de saida.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

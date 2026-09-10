@@ -55,8 +55,8 @@ func main () {
 		fmt.Println("Registrando topicos")
 
 		topics := map[string]byte{
-			"devices/+/telemetry":   0,
-			"devices/+/healthcheck": 0,
+			"devices/+/telemetry":    0,
+			"devices/+/health-check": 0,
 		}
 
 		//função de subscriber -> realizar a inscrição no topico
@@ -82,7 +82,7 @@ func main () {
 
 		fmt.Println("Inscrito nos tópicos:")
 		fmt.Println(" - devices/+/telemetry")
-		fmt.Println(" - devices/+/healthcheck")
+		fmt.Println(" - devices/+/health-check")
 	}
 
 
