@@ -2,7 +2,6 @@
 .env
 .git
 README.md
-NOTES.md
 Dockerfile
 .dockerignore
 docker-compose.yml

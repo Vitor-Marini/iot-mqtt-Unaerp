@@ -57,7 +57,6 @@ Pacote único na raiz do módulo, mais `models/`:
 | `models/telemetry.go` | Struct do payload de telemetria |
 | `models/healthcheck.go` | Struct do payload de health check |
 | `mock_esp32.sh` | Publica telemetria falsa no broker, para testar sem hardware |
-| `NOTES.md` | Notas de projeto **históricas** — descrevem a fase Prometheus, antes do InfluxDB |
 
 > O nome `server.go` é herança da fase anterior, quando o arquivo servia o
 > endpoint `/metrics`. Hoje ele guarda o cliente do InfluxDB.
