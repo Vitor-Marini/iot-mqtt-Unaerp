@@ -8,8 +8,11 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      # Consumida pelo provisioning/datasources/prometheus.yml
-      - PROMETHEUS_URL=${PROMETHEUS_URL:-http://prometheus:9090}
+      # Consumidas pelo provisioning/datasources/influxdb.yml
+      - INFLUXDB_URL=${INFLUXDB_URL:-http://influxdb:8086}
+      - INFLUXDB_ORG=${INFLUXDB_ORG:-esp32}
+      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-sensors}
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN:?defina INFLUXDB_TOKEN no .env}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - ./provisioning:/etc/grafana/provisioning:ro

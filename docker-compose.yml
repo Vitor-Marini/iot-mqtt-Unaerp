@@ -1,9 +1,12 @@
-# Ambiente de DESENVOLVIMENTO: sobe os quatro serviços Docker numa rede única,
-# onde os nomes resolvem por DNS (mosquitto, subscriber, prometheus, grafana).
+# Ambiente FULL LOCAL: sobe os quatro servicos Docker numa rede unica, onde os
+# nomes resolvem por DNS (mosquitto, subscriber, influxdb, grafana).
 #
-# NÃO é o modelo de produção deste projeto. Em produção cada serviço roda numa
-# máquina separada, com seu próprio docker-compose.yml em services/<nome>/.
-# Ver README.md → "Execução".
+# NAO e o modelo de producao deste projeto. Em producao cada servico roda numa
+# maquina separada, com seu proprio docker-compose.yml em services/<nome>/.
+# Ver README.md -> "Execucao".
+#
+# Só o ESP32 continua fora: aponte o MQTT_HOST do firmware para o IP desta
+# maquina.
 
 name: estacao-meteorologica
 
@@ -25,6 +28,30 @@ services:
       retries: 3
       start_period: 10s
 
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    restart: unless-stopped
+    ports:
+      - "${INFLUXDB_PORT:-8086}:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USERNAME:-admin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD:?defina INFLUXDB_PASSWORD no .env da raiz}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-esp32}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-sensors}
+      DOCKER_INFLUXDB_INIT_RETENTION: ${INFLUXDB_RETENTION:-0}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:?defina INFLUXDB_TOKEN no .env da raiz}
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping", "--host", "http://127.0.0.1:8086"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
   subscriber:
     build:
       context: ./services/subscriber
@@ -32,49 +59,44 @@ services:
     image: iot-subscriber:local
     container_name: subscriber
     restart: unless-stopped
+    # Espera os dois ficarem saudaveis: sem o bucket provisionado, toda escrita
+    # falharia nos primeiros segundos.
     depends_on:
       mosquitto:
         condition: service_healthy
+      influxdb:
+        condition: service_healthy
     environment:
-      - MQTT_BROKER_URL=tcp://mosquitto:1883
-      - MQTT_CLIENT_ID=${MQTT_CLIENT_ID:-subscriber-estacao}
-      - MQTT_TELEMETRY_TOPIC=${MQTT_TELEMETRY_TOPIC:-devices/+/telemetry}
-      - MQTT_HEALTH_TOPIC=${MQTT_HEALTH_TOPIC:-devices/+/health-check}
-      - MQTT_QOS=${MQTT_QOS:-0}
-      - METRICS_ADDR=:2112
-      - SENSOR_STALE_AFTER=${SENSOR_STALE_AFTER:-90s}
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-    ports:
-      - "${SUBSCRIBER_PORT:-2112}:2112"
-
-  prometheus:
-    image: prom/prometheus:v2.53.0
-    container_name: prometheus
-    restart: unless-stopped
-    depends_on:
-      - subscriber
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}"
-      - "--web.enable-lifecycle"
-    ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
-    volumes:
-      - ./services/prometheus/config:/etc/prometheus:ro
-      - prometheus_data:/prometheus
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      SUBSCRIBER_ID: ${SUBSCRIBER_ID:-DB_SUBSCRIBER}
+      INFLUX_HOST: http://influxdb:8086
+      # Atencao ao nome: o codigo le TOKEN_INFLUX, nao INFLUX_TOKEN.
+      TOKEN_INFLUX: ${INFLUXDB_TOKEN:?defina INFLUXDB_TOKEN no .env da raiz}
+      INFLUX_ORG: ${INFLUXDB_ORG:-esp32}
+      INFLUX_BUCKET: ${INFLUXDB_BUCKET:-sensors}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   grafana:
     image: grafana/grafana:11.1.0
     container_name: grafana
     restart: unless-stopped
     depends_on:
-      - prometheus
+      influxdb:
+        condition: service_healthy
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      - PROMETHEUS_URL=http://prometheus:9090
       - GF_USERS_ALLOW_SIGN_UP=false
+      # Consumidas pelo provisioning/datasources/influxdb.yml
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_ORG=${INFLUXDB_ORG:-esp32}
+      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-sensors}
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN:?defina INFLUXDB_TOKEN no .env da raiz}
     ports:
       - "${GRAFANA_PORT:-3000}:3000"
     volumes:
@@ -85,5 +107,6 @@ services:
 volumes:
   mosquitto_data:
   mosquitto_log:
-  prometheus_data:
+  influxdb_data:
+  influxdb_config:
   grafana_data:

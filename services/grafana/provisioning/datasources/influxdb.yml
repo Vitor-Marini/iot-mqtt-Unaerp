@@ -1,0 +1,23 @@
+# Datasource provisionado no boot. URL, org, bucket e token vem de variaveis de
+# ambiente porque o InfluxDB roda em outra maquina — o Grafana interpola ${VAR}
+# em arquivos de provisioning.
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB
+    uid: influxdb
+    type: influxdb
+    access: proxy
+    url: ${INFLUXDB_URL}
+    isDefault: true
+    editable: false
+    jsonData:
+      # Flux, nao InfluxQL: o subscriber escreve pela API v2.
+      version: Flux
+      organization: ${INFLUXDB_ORG}
+      defaultBucket: ${INFLUXDB_BUCKET}
+      httpMode: POST
+      # Deve casar com o intervalo de publicacao do firmware (5 s).
+      timeInterval: 5s
+    secureJsonData:
+      token: ${INFLUXDB_TOKEN}

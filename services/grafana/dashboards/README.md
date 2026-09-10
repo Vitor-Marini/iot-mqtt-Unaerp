@@ -11,5 +11,5 @@ Para versionar um dashboard criado pela interface:
 
 O Grafana relê este diretório a cada 30 s — não precisa reiniciar o container.
 
-Consultas PromQL sugeridas para os painéis estão em
-[`../../prometheus/README.md`](../../prometheus/README.md#consultas-úteis-promql).
+Consultas Flux sugeridas para os painéis estão em
+[`../../influxdb/README.md`](../../influxdb/README.md#consultas-úteis-flux).
