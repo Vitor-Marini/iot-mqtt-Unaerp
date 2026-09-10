@@ -62,7 +62,11 @@ devices/+/health-check
 ```
 
 Esse desenho permite filtrar um nó específico sem varrer o fluxo inteiro e
-suporta comando por difusão. O raciocínio completo está no
+suporta comando por difusão.
+
+> **Atenção ao hífen:** o tópico é `health-check`, não `healthcheck`. O
+> subscriber Go já assinava `devices/+/healthcheck` e por isso nunca recebia
+> nada; foi corrigido para casar com o firmware. O raciocínio completo está no
 [README do firmware](../services/esp32-firmware/README.md#1-mqtt-topic-architecture).
 
 ## `devices/{MAC}/telemetry`
@@ -158,10 +162,14 @@ qualquer coisa em segundos.
 argumentos, que não registra Last Will. Se a placa cair, o broker não avisa
 ninguém.
 
-A única forma de detectar queda é por **ausência**: se não chegar mensagem de
-um `sensor_id` por mais que `SENSOR_STALE_AFTER` (padrão 90 s, três vezes o
-intervalo de health-check), o consumidor deve marcá-lo como offline. É assim
-que o `subscriber` calcula `weather_sensor_up`.
+A única forma de detectar queda é por **ausência**: quanto tempo passou desde a
+última mensagem de cada `sensor_id`. Como o subscriber grava direto no InfluxDB
+sem manter estado, essa conta é feita no banco, por consulta Flux sobre o
+último ponto de cada dispositivo — ver
+[`services/influxdb/README.md`](../services/influxdb/README.md#consultas-úteis-flux).
+
+Um limite razoável é 90 s: o triplo do intervalo de health-check, o que tolera
+duas perdas seguidas antes de acusar queda.
 
 ## Observação: mensagens são retidas
 
@@ -188,5 +196,6 @@ com mensagens retidas na primeira assinatura.
 |---|---|
 | Arquitetura do firmware, fluxograma, decisões | [`services/esp32-firmware/README.md`](../services/esp32-firmware/README.md) |
 | Comandos OTA em `devices/{MAC}/commands` | [`services/esp32-firmware/OTA_IMPLEMENTATION_GUIDE.md`](../services/esp32-firmware/OTA_IMPLEMENTATION_GUIDE.md) |
-| Como o subscriber traduz isso em métricas | [`services/subscriber/README.md`](../services/subscriber/README.md) |
+| Como o subscriber grava isso no InfluxDB | [`services/subscriber/README.md`](../services/subscriber/README.md) |
+| Measurements, tags e consultas Flux | [`services/influxdb/README.md`](../services/influxdb/README.md) |
 | Fluxo ponta a ponta | [`architecture.md`](architecture.md) |

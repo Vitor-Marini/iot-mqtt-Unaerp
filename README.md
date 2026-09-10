@@ -4,19 +4,19 @@ Monorepo da simulação de uma estação meteorológica IoT, desenvolvida para a
 disciplina de **Hardware Configurável e IoT** (UNAERP).
 
 Um **ESP32** com sensor **BMP280** lê temperatura, pressão e altitude e publica
-via **MQTT**. Um **subscriber em Go** valida os dados e os expõe como métricas,
-o **Prometheus** guarda a série temporal e o **Grafana** desenha os painéis.
+via **MQTT**. Um **subscriber em Go** grava os dados no **InfluxDB**, e o
+**Grafana** desenha os painéis.
 
 ```
 ┌──────────────┐   MQTT    ┌──────────────┐   MQTT    ┌──────────────┐
 │ esp32-       │ ────────► │  mosquitto   │ ────────► │  subscriber  │
 │ firmware     │  :1883    │   (broker)   │  :1883    │     (Go)     │
 │ ESP32+BMP280 │           └──────────────┘           └──────┬───────┘
-└──────────────┘                                             │ :2112/metrics
-                                                             ▼ (scrape)
-                            ┌──────────────┐   PromQL  ┌──────────────┐
-                            │   grafana    │ ◄──────── │  prometheus  │
-                            │    :3000     │   :9090   │    (TSDB)    │
+└──────────────┘                                             │ write
+                                                             ▼ (line protocol)
+                            ┌──────────────┐    Flux   ┌──────────────┐
+                            │   grafana    │ ◄──────── │   influxdb   │
+                            │    :3000     │   :8086   │    (TSDB)    │
                             └──────────────┘           └──────────────┘
 ```
 
@@ -30,20 +30,21 @@ separada. Nenhum depende de outro estar no mesmo host: toda referência cruzada
 |---|---|:---:|---|---|
 | [`services/esp32-firmware`](services/esp32-firmware) | C++ / PlatformIO | — | — | Lê o BMP280 e publica em MQTT |
 | [`services/mosquitto`](services/mosquitto) | Eclipse Mosquitto | sim | `1883` | Broker MQTT |
-| [`services/subscriber`](services/subscriber) | Go | sim | `2112` | Assina MQTT e expõe `/metrics` |
-| [`services/prometheus`](services/prometheus) | Prometheus | sim | `9090` | Banco de dados temporal |
+| [`services/subscriber`](services/subscriber) | Go | sim | — | Assina MQTT e grava no InfluxDB |
+| [`services/influxdb`](services/influxdb) | InfluxDB 2 | sim | `8086` | Banco de dados temporal |
 | [`services/grafana`](services/grafana) | Grafana | sim | `3000` | Dashboards |
 
-O firmware é o único sem Docker: ele roda no hardware.
+O firmware é o único sem Docker: ele roda no hardware. O subscriber é o único
+sem porta: só faz conexões de saída.
 
 ## Estrutura
 
 ```
 iot-mqtt-Unaerp/
 ├── README.md                  # este arquivo
-├── docker-compose.yml         # DEV: sobe os 4 serviços Docker numa rede só
-├── .env.example               # variáveis do ambiente de desenvolvimento
-├── Makefile                   # atalhos: make up, make logs, make firmware
+├── docker-compose.yml         # FULL LOCAL: sobe os 4 serviços Docker numa rede só
+├── .env.example               # variáveis do ambiente full local
+├── Makefile                   # atalhos: make up, make logs, make mock
 ├── .editorconfig
 │
 ├── docs/
@@ -55,8 +56,8 @@ iot-mqtt-Unaerp/
 └── services/
     ├── esp32-firmware/        # platformio.ini, secrets.ini.example, include/, src/
     ├── mosquitto/             # config/mosquitto.conf, docker-compose.yml
-    ├── subscriber/            # cmd/, internal/, Dockerfile, docker-compose.yml
-    ├── prometheus/            # config/prometheus.yml, targets/, docker-compose.yml
+    ├── subscriber/            # main.go, mqtt.go, workers.go, models/, Dockerfile
+    ├── influxdb/              # docker-compose.yml, .env.example
     └── grafana/               # provisioning/, dashboards/, docker-compose.yml
 ```
 
@@ -70,7 +71,7 @@ reaprender nada:
 - `.env.example` — toda a configuração, com valores padrão. Copie para `.env`.
 - `config/` ou `provisioning/` — arquivos montados como somente-leitura.
 
-Nenhum segredo é versionado: `.env` e o `secrets.ini` do firmware estão no
+Nenhum segredo é versionado: os `.env` e o `secrets.ini` do firmware estão no
 `.gitignore`.
 
 ### O contrato é o acoplamento
@@ -80,9 +81,22 @@ mantém em acordo é [`docs/mqtt-contract.md`](docs/mqtt-contract.md), que defin
 os tópicos, o schema e as faixas válidas. **Mudou o contrato, mudam os dois
 lados.**
 
+### O token do InfluxDB aparece em três lugares
+
+É a única configuração que precisa estar repetida e idêntica:
+
+| Onde | Variável |
+|---|---|
+| [`services/influxdb/.env`](services/influxdb/.env.example) | `INFLUXDB_TOKEN` |
+| [`services/subscriber/.env`](services/subscriber/.env.example) | **`TOKEN_INFLUX`** (nome invertido, é assim no código) |
+| [`services/grafana/.env`](services/grafana/.env.example) | `INFLUXDB_TOKEN` |
+
+No modo full local, o `.env` da raiz define `INFLUXDB_TOKEN` uma vez e o compose
+distribui para os três.
+
 ## Execução
 
-### Desenvolvimento: tudo numa máquina
+### Full local: tudo numa máquina
 
 O `docker-compose.yml` da raiz sobe os quatro serviços Docker numa rede única,
 onde os nomes resolvem por DNS. Serve para desenvolver e demonstrar sem
@@ -90,6 +104,7 @@ precisar de quatro máquinas:
 
 ```bash
 cp .env.example .env
+# defina INFLUXDB_PASSWORD e INFLUXDB_TOKEN — o compose falha sem eles
 make up
 make urls
 ```
@@ -97,17 +112,22 @@ make urls
 | Serviço | Endereço |
 |---|---|
 | Grafana | <http://localhost:3000> (`admin`/`admin`) |
-| Prometheus | <http://localhost:9090> |
-| Métricas | <http://localhost:2112/metrics> |
+| InfluxDB | <http://localhost:8086> |
 | Broker MQTT | `tcp://localhost:1883` |
+
+Gere tráfego falso, sem precisar do ESP32:
+
+```bash
+make mock
+```
 
 Outros atalhos: `make help`. Para derrubar: `make down`, ou `make clean` para
 apagar também os volumes.
 
-O firmware continua rodando no ESP32 físico — aponte o `MQTT_HOST` dele para o
-IP desta máquina.
+O firmware continua rodando no ESP32 físico — aponte o `mqtt_host` do
+`secrets.ini` dele para o IP desta máquina.
 
-### Produção: uma máquina por serviço
+### Distribuído: uma máquina por serviço
 
 Suba nesta ordem, porque cada serviço depende do anterior estar no ar:
 
@@ -115,20 +135,19 @@ Suba nesta ordem, porque cada serviço depende do anterior estar no ar:
 # 1. Máquina do broker
 cd services/mosquitto && docker compose up -d
 
-# 2. Máquina do subscriber
-cd services/subscriber
-cp .env.example .env          # ajuste MQTT_BROKER_URL para o IP do broker
-docker compose up -d --build
-
-# 3. Máquina do Prometheus
-cd services/prometheus
-cp .env.example .env
-# aponte config/targets/subscriber.json para o IP do subscriber
+# 2. Máquina do InfluxDB
+cd services/influxdb
+cp .env.example .env          # defina INFLUXDB_PASSWORD e INFLUXDB_TOKEN
 docker compose up -d
+
+# 3. Máquina do subscriber
+cd services/subscriber
+cp .env.example .env          # MQTT_HOST, INFLUX_HOST e TOKEN_INFLUX com IPs/token reais
+docker compose up -d --build
 
 # 4. Máquina do Grafana
 cd services/grafana
-cp .env.example .env          # ajuste PROMETHEUS_URL para o IP do Prometheus
+cp .env.example .env          # INFLUXDB_URL e INFLUXDB_TOKEN
 docker compose up -d
 
 # 5. ESP32
@@ -145,37 +164,38 @@ Portas que precisam estar liberadas no firewall:
 |---|---|---|
 | ESP32 | mosquitto | `1883` |
 | subscriber | mosquitto | `1883` |
-| prometheus | subscriber | `2112` |
-| grafana | prometheus | `9090` |
+| subscriber | influxdb | `8086` |
+| grafana | influxdb | `8086` |
 | navegador | grafana | `3000` |
+| navegador | influxdb (UI, opcional) | `8086` |
+
+Nada precisa alcançar o subscriber: ele não escuta em porta nenhuma.
 
 ## Estado atual
-
-A estrutura, os arquivos Docker e a configuração de todos os serviços estão
-prontos. Os dois serviços com código próprio estão como esqueleto documentado:
 
 | Serviço | Estado |
 |---|---|
 | `esp32-firmware` | Completo — FreeRTOS, BMP280, WiFiManager, NTP e MQTT funcionando |
-| `mosquitto`, `prometheus`, `grafana` | Funcionais — sobem e se conectam |
-| `subscriber` | Esqueleto — o código real está na branch `Pox` e entra por merge depois |
-
-O README de cada um traz a seção de implementação, com a ordem sugerida e as
-dependências previstas.
+| `subscriber` | Completo — assina MQTT e grava no InfluxDB |
+| `mosquitto`, `influxdb`, `grafana` | Funcionais — sobem e se conectam |
+| Dashboards do Grafana | Vazios — a criar pela interface e exportar para `services/grafana/dashboards/` |
 
 ## Documentação
 
 - [`docs/architecture.md`](docs/architecture.md) — diagrama, fluxo de uma
   leitura ponta a ponta, topologia de máquinas e as decisões de projeto com
-  suas alternativas descartadas.
+  suas alternativas descartadas, incluindo por que saímos do Prometheus.
 - [`docs/mqtt-contract.md`](docs/mqtt-contract.md) — tópicos, schema dos
-  payloads, faixas válidas, LWT e regra de detecção de sensor offline.
+  payloads, faixas válidas e regra de detecção de queda.
+- [`services/influxdb/README.md`](services/influxdb/README.md) — consultas Flux
+  prontas, que substituem o PromQL da arquitetura anterior.
 
 ## Requisitos
 
 | Ferramenta | Versão | Para quê |
 |---|---|---|
-| Docker Engine | 20.10+ | mosquitto, subscriber, prometheus, grafana |
+| Docker Engine | 20.10+ | mosquitto, subscriber, influxdb, grafana |
 | Docker Compose | v2 | orquestração |
-| Go | 1.21+ | desenvolver o subscriber |
+| Go | 1.26+ | desenvolver o subscriber |
 | PlatformIO Core | 6+ | compilar e gravar o firmware |
+| mosquitto-clients | qualquer | `make mock` e testes manuais |
