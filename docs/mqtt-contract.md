@@ -50,7 +50,7 @@ broadcastTopic   = MQTT_TOPIC_BASE + "/" + "broadcast";
 | Tópico | Direção | Publicador | Assinante |
 |---|---|---|---|
 | `devices/{MAC}/telemetry` | ESP32 → broker | firmware | `subscriber` |
-| `devices/{MAC}/health-check` | ESP32 → broker | firmware | `subscriber` |
+| `devices/{MAC}/health-check` | ESP32 → broker | firmware | `subscriber`, `healthcheck-monitor` |
 | `devices/{MAC}/commands` | broker → ESP32 | (futuro: OTA) | firmware |
 | `devices/broadcast` | broker → ESP32 | (futuro) | firmware |
 
@@ -197,5 +197,6 @@ com mensagens retidas na primeira assinatura.
 | Arquitetura do firmware, fluxograma, decisões | [`services/esp32-firmware/README.md`](../services/esp32-firmware/README.md) |
 | Comandos OTA em `devices/{MAC}/commands` | [`services/esp32-firmware/OTA_IMPLEMENTATION_GUIDE.md`](../services/esp32-firmware/OTA_IMPLEMENTATION_GUIDE.md) |
 | Como o subscriber grava isso no InfluxDB | [`services/subscriber/README.md`](../services/subscriber/README.md) |
+| Como o monitor exibe o health check | [`services/healthcheck-monitor/README.md`](../services/healthcheck-monitor/README.md) |
 | Measurements, tags e consultas Flux | [`services/influxdb/README.md`](../services/influxdb/README.md) |
 | Fluxo ponta a ponta | [`architecture.md`](architecture.md) |
