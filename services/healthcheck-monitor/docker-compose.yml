@@ -1,0 +1,39 @@
+# Sobe SOMENTE o monitor de health check, para deploy em maquina propria.
+#
+# ATENCAO: este servico abre uma JANELA Tkinter. Dentro de um container isso
+# exige um servidor X alcancavel pelo DISPLAY. Rodar direto no host
+# (`python monitor.py`) e mais simples e e o caminho recomendado -- o README
+# explica os dois. Este compose existe para quem quer o container.
+services:
+  healthcheck-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: iot-healthcheck-monitor:local
+    container_name: healthcheck-monitor
+    restart: unless-stopped
+    env_file:
+      # Criado a partir de .env.example. Opcional: sem ele valem os defaults
+      # do proprio monitor (broker em localhost, que so serve fora do Docker).
+      - path: .env
+        required: false
+    environment:
+      # Para onde a janela e desenhada.
+      #   Linux  : DISPLAY=:0 e o socket X montado abaixo
+      #   Windows: DISPLAY=host.docker.internal:0.0 com VcXsrv no host
+      DISPLAY: ${DISPLAY:-host.docker.internal:0.0}
+    volumes:
+      # Socket X11 do host. Existe apenas no Linux; no Windows/macOS a linha e
+      # inofensiva (o caminho nao existe e o Tk usa o DISPLAY via TCP).
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+    extra_hosts:
+      # Faz `host.docker.internal` resolver tambem em Docker nativo no Linux,
+      # onde esse nome nao existe por padrao. Serve tanto para o MQTT_HOST
+      # quanto para o DISPLAY apontando ao host. Ver docs/deployment.md.
+      - "host.docker.internal:host-gateway"
+    # Sem `ports`: este servico nao serve nada, so assina MQTT.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

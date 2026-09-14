@@ -81,6 +81,39 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  healthcheck-monitor:
+    build:
+      context: ./services/healthcheck-monitor
+      dockerfile: Dockerfile
+    image: iot-healthcheck-monitor:local
+    container_name: healthcheck-monitor
+    restart: unless-stopped
+    # Profile `gui`: NAO sobe com `docker compose up`/`make up`, porque este
+    # servico abre uma janela Tkinter e precisa de um servidor X alcancavel.
+    # Suba de proposito com:  docker compose --profile gui up -d healthcheck-monitor
+    # Rodar no host (`python monitor.py`) e mais simples -- ver o README dele.
+    profiles: ["gui"]
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_HEALTH_TOPIC: ${MQTT_HEALTH_TOPIC:-devices/+/health-check}
+      MONITOR_CLIENT_ID: ${MONITOR_CLIENT_ID:-healthcheck-monitor}
+      # Linux: :0 com o socket X montado. Windows: host.docker.internal:0.0
+      # com VcXsrv rodando no host.
+      DISPLAY: ${DISPLAY:-host.docker.internal:0.0}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   grafana:
     image: grafana/grafana:11.1.0
     container_name: grafana
