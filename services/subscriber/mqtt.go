@@ -27,14 +27,11 @@ func messageHandler(
 	case strings.HasPrefix(topic, "devices/") &&
 		strings.HasSuffix(topic, "/telemetry"):
 
-		parts := strings.Split(topic, "/")
-
-		if len(parts) != 3 {
+		deviceID, ok := deviceIDFromTopic(topic)
+		if !ok {
 			log.Println("Tópico de telemetry inválido:", topic)
 			return
 		}
-
-		deviceID := parts[1]
 
 		var telemetry models.Telemetry
 
@@ -43,25 +40,28 @@ func messageHandler(
 			return
 		}
 
+		// A identidade vem do topico, nao do payload (ver identity.go).
+		telemetry.DeviceID = resolveDeviceID(
+			deviceID, telemetry.DeviceID, telemetry.SensorID, topic,
+		)
+		telemetry.DeviceName = resolveDeviceName(telemetry.DeviceName, telemetry.DeviceID)
+		telemetry.SensorModel = resolveSensorModel(telemetry.SensorModel)
+
 		log.Printf(
-			"Telemetry recebida do dispositivo %s",
-			deviceID,
+			"Telemetry recebida do dispositivo %s (%s)",
+			telemetry.DeviceID, telemetry.DeviceName,
 		)
 
-		// Aqui você pode associar o deviceID à telemetry
 		telemetryChan <- telemetry
 
 	case strings.HasPrefix(topic, "devices/") &&
 		strings.HasSuffix(topic, "/health-check"):
 
-		parts := strings.Split(topic, "/")
-
-		if len(parts) != 3 {
-			log.Println("Tópico de telemetry inválido:", topic)
+		deviceID, ok := deviceIDFromTopic(topic)
+		if !ok {
+			log.Println("Tópico de health-check inválido:", topic)
 			return
 		}
-
-		deviceID := parts[1]
 
 		var healthcheck models.Healthcheck
 
@@ -70,9 +70,15 @@ func messageHandler(
 			return
 		}
 
+		healthcheck.DeviceID = resolveDeviceID(
+			deviceID, healthcheck.DeviceID, healthcheck.SensorID, topic,
+		)
+		healthcheck.DeviceName = resolveDeviceName(healthcheck.DeviceName, healthcheck.DeviceID)
+		healthcheck.SensorModel = resolveSensorModel(healthcheck.SensorModel)
+
 		log.Printf(
-			"Healthcheck recebida do dispositivo %s",
-			deviceID,
+			"Healthcheck recebida do dispositivo %s (%s)",
+			healthcheck.DeviceID, healthcheck.DeviceName,
 		)
 
 		healthcheckChan <- healthcheck

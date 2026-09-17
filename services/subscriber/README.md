@@ -33,12 +33,26 @@ firmware.
 
 ### Dados gravados
 
-Duas *measurements*, ambas com as tags `sensor_id` e `sensor_model`:
+Duas *measurements*, ambas com as tags `device_id`, `device_name` e
+`sensor_model`:
 
 | Measurement | Fields | Origem |
 |---|---|---|
 | `telemetry` | `temperature`, `pressure`, `altitude` | `devices/+/telemetry` |
-| `healthcheck` | `status`, `rssi`, `free_heap`, `uptime_ms` | `devices/+/health-check` |
+| `healthcheck` | `status`, `version`, `ip`, `rssi`, `free_heap`, `uptime_ms` | `devices/+/health-check` |
+
+**A identidade vem do tópico, não do payload.** O MAC está em
+`devices/{MAC}/...`, e foi por ele que o broker roteou a mensagem — então
+existe sempre, inclusive para uma placa com firmware anterior ao rename, que
+publica `sensor_id` em vez de `device_id`. É isso que torna o rename seguro
+com a frota em campo. O segmento é validado contra `^[0-9A-F]{12}$`; tópico
+fora do formato é rejeitado, para um publicador de teste não criar uma série
+permanente. Divergência entre payload e tópico gera aviso no log, e o tópico
+ganha.
+
+**`version` e `ip` são fields, não tags.** A regra: tag precisa ser estável
+durante a vida da série. `version` muda a cada OTA e `ip` a cada lease de
+DHCP — como tags, fraturariam as séries de `healthcheck` a cada mudança.
 
 As tags viram *séries* separadas, então vários ESP32 convivem no mesmo bucket
 sem se misturar. Consultas Flux prontas em
@@ -54,6 +68,7 @@ Pacote único na raiz do módulo, mais `models/`:
 | `mqtt.go` | `messageHandler`: roteia por sufixo do tópico, decodifica o JSON e publica no channel |
 | `workers.go` | As duas goroutines que consomem os channels e montam os pontos |
 | `server.go` | Cliente InfluxDB (`InitInfluxDB` / `CloseInfluxDB`) |
+| `identity.go` | Resolve `device_id`/`device_name` do tópico, com validação de MAC |
 | `models/telemetry.go` | Struct do payload de telemetria |
 | `models/healthcheck.go` | Struct do payload de health check |
 | `mock_esp32.sh` | Publica telemetria falsa no broker, para testar sem hardware |
@@ -127,11 +142,26 @@ Com o broker e o InfluxDB no ar, gere tráfego falso:
 make mock        # ou: ./mock_esp32.sh
 ```
 
+O mock é todo sobrescrevível por variável de ambiente, então dá para simular
+**várias placas** e montar o dashboard antes de gravar qualquer ESP32:
+
+```bash
+DEVICE_ID=A1B2C3D4E5F6 DEVICE_NAME=Estacao-Lab     ./mock_esp32.sh &
+DEVICE_ID=B2C3D4E5F6A1 DEVICE_NAME=Estacao-Varanda ./mock_esp32.sh &
+```
+
+E `LEGACY=1` publica no formato antigo (`sensor_id`, sem `device_name`) — o
+teste de regressão da transição:
+
+```bash
+LEGACY=1 DEVICE_ID=CCDDEEFF0011 ./mock_esp32.sh
+```
+
 O log do subscriber deve mostrar cada mensagem chegando:
 
 ```
 TOPICO: devices/A1B2C3D4E5F6/telemetry
-PAYLOAD: {"sensor_id":"A1B2C3D4E5F6",...}
+PAYLOAD: {"device_id":"A1B2C3D4E5F6","device_name":"Estacao-Lab",...}
 Telemetry recebida do dispositivo A1B2C3D4E5F6
 ========== TELEMETRY ==========
 Sensor ID: A1B2C3D4E5F6
@@ -154,7 +184,7 @@ Uma mensagem única, sem o mock:
 
 ```bash
 mosquitto_pub -h localhost -t "devices/A1B2C3D4E5F6/telemetry" -m \
-  '{"sensor_id":"A1B2C3D4E5F6","sensor_model":"BMP280","temperature":24.5,"pressure":1013.25,"altitude":540.2,"timestamp":1787960400}'
+  '{"device_id":"A1B2C3D4E5F6","device_name":"Estacao-Lab","sensor_model":"BMP280","temperature":24.5,"pressure":1013.25,"altitude":540.2,"timestamp":1787960400}'
 ```
 
 ## Comportamentos conhecidos
@@ -172,8 +202,6 @@ Coisas que valem saber antes de depurar:
 - **Payload não é validado.** O subscriber decodifica e grava. Um BMP280 ausente
   faz o firmware publicar zeros, e esses zeros entram no banco. Filtre no
   Grafana, ou trate na origem.
-- **`deviceID` do tópico é só logado.** O `sensor_id` gravado como tag vem do
-  payload, não do segmento do tópico.
 
 ## Problemas comuns
 
@@ -181,6 +209,7 @@ Coisas que valem saber antes de depurar:
 |---|---|
 | `Tópico desconhecido` no log | Sufixo fora de `/telemetry` e `/health-check` |
 | Nada chega, mas o ESP32 publica | `mqtt_topic_base` do firmware diferente de `devices` |
+| `Tópico de telemetry inválido` | Segmento do tópico não é um MAC de 12 hex |
 | `unauthorized: unauthorized access` | `TOKEN_INFLUX` diferente do token do InfluxDB |
 | `bucket not found` | `INFLUX_BUCKET` diferente do bucket provisionado |
 | Conecta no MQTT mas nada aparece no banco | `INFLUX_HOST` vazio ou inalcançável — as 4 vars do Influx são obrigatórias |
