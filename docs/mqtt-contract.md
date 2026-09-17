@@ -18,7 +18,7 @@ Consumidores (subscriber Go, ferramentas de teste) devem seguir o que está aqui
 | QoS | `0` — PubSubClient só publica em QoS 0 | — |
 | LWT | **não há** — `connect()` usa a forma de 3 argumentos | `mqtt_client.cpp` |
 
-## Identidade do dispositivo (`sensor_id`)
+## Identidade do dispositivo (`device_id`)
 
 Todo dispositivo se identifica pelo MAC de fábrica, formatado por
 `getDeviceMacId()` em `include/config.h`:
@@ -30,8 +30,40 @@ snprintf(macStr, sizeof(macStr), "%04X%08X", (uint16_t)(mac >> 32), (uint32_t)ma
 São **12 caracteres hexadecimais maiúsculos, sem separadores** — por exemplo
 `A1B2C3D4E5F6`. Não é o formato `AA:BB:CC:DD:EE:FF` do `WiFi.macAddress()`.
 
-O mesmo valor é usado como `sensor_id` no payload, como client ID no broker e
+O mesmo valor é usado como `device_id` no payload, como client ID no broker e
 como segmento dos tópicos.
+
+### Quem consome deve usar o TÓPICO, não o payload
+
+O MAC aparece nos dois lugares, mas **o tópico é a fonte de verdade**: foi por
+ele que o broker roteou a mensagem, e ele existe mesmo quando o payload está
+malformado ou em formato antigo. O payload é informativo — mantido por deixar
+um dump de `mosquitto_sub` autoexplicativo — e serve de conferência.
+
+Isso é o que tornou seguro renomear a chave de `sensor_id` para `device_id`
+com a frota já em campo: uma placa com firmware anterior continua identificada
+corretamente, porque o roteamento não depende da chave JSON.
+
+Consumidores devem validar o segmento contra `^[0-9A-F]{12}$` e rejeitar o que
+não casar — senão um publicador de teste em `devices/qualquer-coisa/telemetry`
+cria uma série permanente no banco.
+
+### Nome legível (`device_name`)
+
+Publicado nos dois tópicos de saída, vindo de `device_name` no `secrets.ini`
+de cada placa. É o que aparece na legenda e no seletor do Grafana, no lugar do
+MAC. Duas regras:
+
+- **Máximo 24 caracteres**, e apenas `[A-Za-z0-9._-]`. O valor vai para uma tag
+  do InfluxDB e para uma regex do Grafana.
+- **Único por placa.** O seletor do Grafana filtra por este valor, então dois
+  dispositivos com o mesmo nome se fundem num item.
+
+Ausente ou vazio, o firmware publica o próprio MAC (`getDeviceName()` em
+`include/config.h`), e o consumidor também cai para o MAC. Isso é deliberado:
+`DEVICE_NAME` é definido em tempo de compilação, então um único binário
+distribuído por OTA em broadcast daria o mesmo nome a toda a frota. Sem nome,
+cada placa se identifica pelo MAC, que é único.
 
 ## Tópicos
 
@@ -81,7 +113,8 @@ na fila FreeRTOS e o MQTT está conectado.
 
 ```json
 {
-  "sensor_id": "A1B2C3D4E5F6",
+  "device_id": "A1B2C3D4E5F6",
+  "device_name": "Estacao-Lab",
   "sensor_model": "BMP280",
   "temperature": 24.5,
   "pressure": 1013.25,
@@ -92,7 +125,8 @@ na fila FreeRTOS e o MQTT está conectado.
 
 | Campo | Tipo | Unidade | Origem |
 |---|---|---|---|
-| `sensor_id` | string | — | `getDeviceMacId()` |
+| `device_id` | string | — | `getDeviceMacId()` |
+| `device_name` | string | — | `getDeviceName()`, cai para o MAC |
 | `sensor_model` | string | — | literal `"BMP280"` |
 | `temperature` | number | °C | `bmp.readTemperature()` |
 | `pressure` | number | hPa | `bmp.readPressure() / 100.0` |
@@ -129,9 +163,12 @@ logo após cada conexão bem-sucedida ao broker.
 
 ```json
 {
-  "sensor_id": "A1B2C3D4E5F6",
+  "device_id": "A1B2C3D4E5F6",
+  "device_name": "Estacao-Lab",
   "sensor_model": "BMP280",
+  "version": "1.1.0",
   "status": "OK",
+  "ip": "192.168.0.31",
   "rssi": -58,
   "free_heap": 210376,
   "uptime_ms": 3721000,
@@ -141,13 +178,21 @@ logo após cada conexão bem-sucedida ao broker.
 
 | Campo | Tipo | Unidade | Valores / origem |
 |---|---|---|---|
-| `sensor_id` | string | — | `getDeviceMacId()` |
+| `device_id` | string | — | `getDeviceMacId()` |
+| `device_name` | string | — | `getDeviceName()`, cai para o MAC |
 | `sensor_model` | string | — | literal `"BMP280"` |
+| `version` | string | — | `FIRMWARE_VERSION` do build |
 | `status` | string | — | **`"OK"` ou `"ERROR"`** |
+| `ip` | string | — | `WiFi.localIP()` |
 | `rssi` | number | dBm | `WiFi.RSSI()` |
 | `free_heap` | number | bytes | `ESP.getFreeHeap()` |
 | `uptime_ms` | number | **ms** | `millis()` |
 | `timestamp` | number | s | mesma regra da telemetria |
+
+No InfluxDB, `version` e `ip` viram **fields**, não tags: mudam ao longo da vida
+do dispositivo — a cada OTA e a cada lease de DHCP — e tag precisa ser estável
+durante a vida da série. Como tags, fraturariam todas as séries de
+`healthcheck` a cada mudança.
 
 Dois detalhes que mudam a leitura do campo `status`:
 
@@ -186,7 +231,8 @@ Publicado pelo firmware em resposta a comandos OTA para fornecer visibilidade do
 
 ```json
 {
-  "sensor_id": "A1B2C3D4E5F6",
+  "device_id": "A1B2C3D4E5F6",
+  "device_name": "Estacao-Lab",
   "status": "SUCCESS",
   "version": "1.0.1",
   "ip": "192.168.1.150",
@@ -212,7 +258,7 @@ argumentos, que não registra Last Will. Se a placa cair, o broker não avisa
 ninguém.
 
 A única forma de detectar queda é por **ausência**: quanto tempo passou desde a
-última mensagem de cada `sensor_id`. Como o subscriber grava direto no InfluxDB
+última mensagem de cada `device_id`. Como o subscriber grava direto no InfluxDB
 sem manter estado, essa conta é feita no banco, por consulta Flux sobre o
 último ponto de cada dispositivo — ver
 [`services/influxdb/README.md`](../services/influxdb/README.md#consultas-úteis-flux).

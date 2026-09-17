@@ -70,7 +70,7 @@ docker compose exec mosquitto mosquitto_sub -t 'devices/+/telemetry' -v
 
 # Terminal 2 — publicar uma leitura de teste
 docker compose exec mosquitto mosquitto_pub -t 'devices/A1B2C3D4E5F6/telemetry' -m \
-  '{"sensor_id":"A1B2C3D4E5F6","sensor_model":"BMP280","temperature":24.5,"pressure":1013.25,"altitude":540.2,"timestamp":1787960400}'
+  '{"device_id":"A1B2C3D4E5F6","device_name":"Estacao-Lab","sensor_model":"BMP280","temperature":24.5,"pressure":1013.25,"altitude":540.2,"timestamp":1787960400}'
 ```
 
 O terminal 1 deve imprimir a mensagem. Isso valida o broker sem depender do

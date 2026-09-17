@@ -9,9 +9,11 @@ Imagem: [`influxdb:2.7`](https://hub.docker.com/_/influxdb).
 
 - Guarda duas *measurements*, escritas pelo subscriber:
   - `telemetry` — `temperature`, `pressure`, `altitude`
-  - `healthcheck` — `status`, `rssi`, `free_heap`, `uptime_ms`
-- Ambas com as tags `sensor_id` e `sensor_model`, o que permite separar vários
-  ESP32 no mesmo bucket.
+  - `healthcheck` — `status`, `version`, `ip`, `rssi`, `free_heap`, `uptime_ms`
+- Ambas com as tags `device_id` (o MAC), `device_name` (nome legível) e
+  `sensor_model`, o que permite separar vários ESP32 no mesmo bucket.
+- Em `healthcheck`, `version` e `ip` são **fields**, não tags: mudam no tempo
+  (a cada OTA e a cada lease de DHCP) e como tags fraturariam as séries.
 - Se autoprovisiona no primeiro boot: cria a organização, o bucket, o usuário
   admin e o token, sem nenhum passo manual.
 - Expõe a UI e a API HTTP em `:8086`.
@@ -151,7 +153,7 @@ from(bucket: "sensors")
 from(bucket: "sensors")
   |> range(start: -1h)
   |> filter(fn: (r) => r._measurement == "telemetry" and r._field == "pressure")
-  |> group(columns: ["sensor_id"])
+  |> group(columns: ["device_id", "device_name"])
   |> last()
 ```
 
@@ -171,10 +173,10 @@ queda, já que o firmware não registra LWT:
 from(bucket: "sensors")
   |> range(start: -24h)
   |> filter(fn: (r) => r._measurement == "healthcheck")
-  |> group(columns: ["sensor_id"])
+  |> group(columns: ["device_id", "device_name"])
   |> last()
   |> map(fn: (r) => ({ r with silencio_s: int(v: uint(v: now()) - uint(v: r._time)) / 1000000000 }))
-  |> keep(columns: ["sensor_id", "silencio_s"])
+  |> keep(columns: ["device_id", "device_name", "silencio_s"])
 ```
 
 Uptime em segundos (o payload traz milissegundos):

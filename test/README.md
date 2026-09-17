@@ -27,7 +27,8 @@ When your ESP32 node connects and publishes telemetry or health-checks, `subscri
 [2026-08-29 19:40:00] TOPIC: devices/A1B2C3D4E5F6/telemetry
 PAYLOAD:
 {
-  "sensor_id": "A1B2C3D4E5F6",
+  "device_id": "A1B2C3D4E5F6",
+  "device_name": "Estacao-Lab",
   "sensor_model": "BMP280",
   "temperature": 24.50,
   "pressure": 1013.25,

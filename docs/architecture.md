@@ -127,8 +127,8 @@ raspava a cada 15 s. **Migramos para InfluxDB com escrita direta.** Os motivos:
 - **O timestamp é o do dispositivo.** O ponto é gravado com o `timestamp` do
   payload, não com o instante do scrape. A série reflete quando a medição
   aconteceu.
-- **O modelo de dados casa com o payload.** `sensor_id` e `sensor_model` viram
-  tags, as grandezas viram fields. Não é preciso inventar um nome de métrica
+- **O modelo de dados casa com o payload.** `device_id`, `device_name` e
+  `sensor_model` viram tags, as grandezas viram fields. Não é preciso inventar um nome de métrica
   por campo nem converter `status: "OK"` em série numérica só para caber no
   formato do Prometheus.
 
@@ -137,7 +137,7 @@ O que se perde, e como compensamos:
 | Perda | Compensação |
 |---|---|
 | `up{job="subscriber"}` de graça — o scrape era o health check | O subscriber não serve HTTP; a saúde dele se vê pelo `docker compose ps` e pelos logs |
-| Detecção de queda do ESP32 pelo `absent()` do PromQL | Consulta Flux sobre o último contato de cada `sensor_id` — ver abaixo |
+| Detecção de queda do ESP32 pelo `absent()` do PromQL | Consulta Flux sobre o último contato de cada `device_id` — ver abaixo |
 | Familiaridade com PromQL | Consultas Flux prontas em [`services/influxdb/README.md`](../services/influxdb/README.md#consultas-úteis-flux) |
 | Um serviço sem credencial | O InfluxDB exige token, que precisa estar igual em três `.env` |
 
@@ -174,11 +174,15 @@ a diferença entre Docker Desktop e Docker nativo no Linux. Tudo isso está em
 3. `vTaskWiFiMQTT` retira da fila, serializa com ArduinoJson conforme
    [mqtt-contract.md](mqtt-contract.md) e publica em
    `devices/{MAC}/telemetry`.
-4. O Mosquitto entrega ao subscriber, que assina `devices/+/telemetry`.
+4. O Mosquitto entrega ao subscriber, que assina `devices/+/telemetry`. A
+   identidade do dispositivo é extraída do **segmento do tópico** e validada
+   como MAC, não lida do payload — é isso que mantém uma placa com firmware
+   antigo identificada corretamente.
 5. `messageHandler` decodifica em `models.Telemetry` e envia para
    `telemetryChan`.
 6. `ProcessTelemetry` monta um ponto na measurement `telemetry`, com as tags
-   `sensor_id`/`sensor_model`, os fields `temperature`/`pressure`/`altitude` e o
+   `device_id`/`device_name`/`sensor_model`, os fields
+   `temperature`/`pressure`/`altitude` e o
    timestamp do payload.
 7. `WritePoint` grava no InfluxDB de forma síncrona.
 8. O Grafana consulta via Flux e desenha.
@@ -190,7 +194,7 @@ dispositivo. E como o subscriber não guarda estado em memória, não há nenhum
 indicador de disponibilidade para zerar quando o silêncio começa.
 
 A detecção é por **ausência, consultada no banco**: quanto tempo passou desde o
-último ponto de cada `sensor_id`. A consulta Flux está em
+último ponto de cada `device_id`. A consulta Flux está em
 [`services/influxdb/README.md`](../services/influxdb/README.md#consultas-úteis-flux)
 e serve de base para um painel e, se quiserem, um alerta do Grafana.
 
