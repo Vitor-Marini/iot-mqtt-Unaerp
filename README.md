@@ -28,11 +28,12 @@ separada. Nenhum depende de outro estar no mesmo host: toda referência cruzada
 
 | Serviço | Stack | Docker | Porta | O que faz |
 |---|---|:---:|---|---|
-| [`services/esp32-firmware`](services/esp32-firmware) | C++ / PlatformIO | — | — | Lê o BMP280 e publica em MQTT |
+| [`services/esp32-firmware`](services/esp32-firmware) | C++ / PlatformIO | — | — | Lê o BMP280, publica em MQTT e suporta OTA |
 | [`services/mosquitto`](services/mosquitto) | Eclipse Mosquitto | sim | `1883` | Broker MQTT |
 | [`services/subscriber`](services/subscriber) | Go | sim | — | Assina MQTT e grava no InfluxDB |
 | [`services/influxdb`](services/influxdb) | InfluxDB 2 | sim | `8086` | Banco de dados temporal |
 | [`services/grafana`](services/grafana) | Grafana | sim | `3000` | Dashboards |
+| [`services/ota-server`](services/ota-server) | Go | sim | `8080` | Servidor e orquestrador de firmware OTA |
 
 O firmware é o único sem Docker: ele roda no hardware. O subscriber é o único
 sem porta: só faz conexões de saída.
@@ -42,19 +43,21 @@ sem porta: só faz conexões de saída.
 ```
 iot-mqtt-Unaerp/
 ├── README.md                  # este arquivo
-├── docker-compose.yml         # FULL LOCAL: sobe os 4 serviços Docker numa rede só
+├── docker-compose.yml         # FULL LOCAL: sobe os 5 serviços Docker numa rede só
 ├── .env.example               # variáveis do ambiente full local
-├── Makefile                   # atalhos: make up, make logs, make mock
+├── Makefile                   # atalhos: make up, make logs, make mock, make ota-trigger
 ├── .editorconfig
 │
 ├── docs/
 │   ├── architecture.md        # diagrama, fluxo de dados e decisões de projeto
-│   └── mqtt-contract.md       # tópicos e schema dos payloads
+│   ├── mqtt-contract.md       # tópicos e schema dos payloads
+│   └── ota-guide.md           # guia completo de atualização OTA e configuração de IPs
 │
 ├── test/                      # bancada de teste: broker local + subscriber de inspeção
 │
 └── services/
     ├── esp32-firmware/        # platformio.ini, secrets.ini.example, include/, src/
+    ├── ota-server/            # main.go, server.go, mqtt.go, trigger_ota.sh, Dockerfile
     ├── mosquitto/             # config/mosquitto.conf, docker-compose.yml
     ├── subscriber/            # main.go, mqtt.go, workers.go, models/, Dockerfile
     ├── influxdb/              # docker-compose.yml, .env.example

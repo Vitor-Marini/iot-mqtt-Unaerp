@@ -26,10 +26,14 @@ public:
     
     // Serializes and publishes device operational status to health-check topic
     bool publishHealthCheck(bool sensorOk);
+
+    // Serializes and publishes OTA status to ota-status topic
+    bool publishOTAStatus(const String& status, const String& version, const String& message, const String& error = "");
     
     String getClientId() const { return clientId; }
     String getTelemetryTopic() const { return telemetryTopic; }
     String getHealthCheckTopic() const { return healthCheckTopic; }
+    String getOTAStatusTopic() const { return otaStatusTopic; }
 
 private:
     WiFiClient espClient;
@@ -40,6 +44,7 @@ private:
     String healthCheckTopic;
     String commandTopic;
     String broadcastTopic;
+    String otaStatusTopic;
 
     // Static callback for incoming MQTT messages
     static void mqttCallback(char* topic, byte* payload, unsigned int length);

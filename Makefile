@@ -28,12 +28,20 @@ urls: ## Mostra os enderecos dos servicos
 	@echo "  Grafana     http://localhost:$${GRAFANA_PORT:-3000}"
 	@echo "  InfluxDB    http://localhost:$${INFLUXDB_PORT:-8086}"
 	@echo "  Broker MQTT tcp://localhost:$${MQTT_PORT:-1883}"
+	@echo "  OTA Server  http://localhost:$${OTA_PORT:-8080}"
 
 mock: ## Publica telemetria falsa no broker local (precisa de mosquitto_pub)
 	cd services/subscriber && ./mock_esp32.sh
 
-firmware: ## Compila o firmware do ESP32
+firmware: ## Compila o firmware e copia automaticamente para o ota-server (ex: make firmware VERSION=1.0.1)
 	cd services/esp32-firmware && pio run
+	@mkdir -p services/ota-server/storage
+	@cp services/esp32-firmware/.pio/build/esp32dev/firmware.bin services/ota-server/storage/firmware-$(if $(VERSION),$(VERSION),latest).bin
+	@cp services/esp32-firmware/.pio/build/esp32dev/firmware.bin services/ota-server/storage/firmware.bin
+	@echo "✅ Firmware compilado e copiado para services/ota-server/storage/"
 
-firmware-upload: ## Grava o firmware e abre o monitor serial
+firmware-upload: ## Grava o firmware via USB e abre o monitor serial
 	cd services/esp32-firmware && pio run --target upload --target monitor
+
+ota-trigger: ## Dispara atualizacao OTA via terminal: make ota-trigger (ou MAC=A1B2C3D4E5F6)
+	@cd services/ota-server && ./trigger_ota.sh $(if $(MAC),--target $(MAC),--target all)

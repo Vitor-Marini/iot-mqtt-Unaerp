@@ -38,6 +38,11 @@
 #define MQTT_TOPIC_HEALTHCHECK  "health-check"
 #define MQTT_TOPIC_COMMANDS     "commands"
 #define MQTT_TOPIC_BROADCAST    "broadcast"
+#define MQTT_TOPIC_OTA_STATUS   "ota-status"
+
+#ifndef FIRMWARE_VERSION
+#define FIRMWARE_VERSION        "1.0.0"
+#endif
 
 // Network & Captive Portal Timeouts
 #define WIFI_CONNECT_TIMEOUT    15000
@@ -57,6 +62,7 @@
 #define I2C_SCL                 22
 #define SENSOR_TASK_STACK_SIZE  4096
 #define NETWORK_TASK_STACK_SIZE 8192
+#define OTA_TASK_STACK_SIZE     8192
 #define SENSOR_QUEUE_LEN        10
 
 // Returns unique hardware MAC address string used as node identifier

@@ -1,0 +1,21 @@
+# Sobe SOMENTE o ota-server, para deploy em maquina propria.
+# Para subir a stack inteira numa maquina, use o docker-compose.yml da raiz.
+services:
+  ota-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: iot-ota-server:local
+    container_name: ota-server
+    restart: unless-stopped
+    ports:
+      - "${OTA_PORT:-8080}:8080"
+    env_file:
+      - .env
+    volumes:
+      - ./storage:/app/storage
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
