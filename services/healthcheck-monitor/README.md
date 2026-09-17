@@ -12,8 +12,10 @@ depender de banco nem de Grafana no ar.
 
 - Assina `devices/+/health-check`. O wildcard é necessário porque o MAC do
   dispositivo faz parte do tópico.
-- Mantém uma linha por `sensor_id` na tabela, atualizada a cada mensagem:
-  modelo, status, RSSI, heap livre, uptime e timestamp.
+- Mantém uma linha por dispositivo na tabela, atualizada a cada mensagem: MAC,
+  nome, modelo, status, RSSI, heap livre, uptime e timestamp.
+- A identidade vem do **segmento do tópico**, não do payload — então funciona
+  também com firmware anterior ao rename de `sensor_id` para `device_id`.
 - Não guarda histórico e não escreve em disco. Fechou a janela, acabou.
 
 Formato das mensagens em [`docs/mqtt-contract.md`](../../docs/mqtt-contract.md);
@@ -137,12 +139,13 @@ Com o broker no ar, publique um health check no formato real:
 
 ```bash
 mosquitto_pub -h localhost -t "devices/A1B2C3D4E5F6/health-check" -m \
-  '{"sensor_id":"A1B2C3D4E5F6","sensor_model":"BMP280","status":"OK","rssi":-65,"free_heap":215400,"uptime_ms":45000,"timestamp":1787960400}'
+  '{"device_id":"A1B2C3D4E5F6","device_name":"Estacao-Lab","sensor_model":"BMP280","version":"1.1.0","status":"OK","ip":"192.168.0.31","rssi":-65,"free_heap":215400,"uptime_ms":45000,"timestamp":1787960400}'
 ```
 
 A linha deve aparecer na tabela de imediato, e o rodapé mostrar
-`Dispositivos ativos: 1`. Publique com outro `sensor_id` e surge uma segunda
-linha; republique o mesmo `sensor_id` e a linha existente é atualizada no lugar.
+`Dispositivos ativos: 1`. Publique em outro tópico `devices/{MAC}/health-check`
+e surge uma segunda linha; republique no mesmo tópico e a linha existente é
+atualizada no lugar.
 
 O [`mock_esp32.sh`](../subscriber/mock_esp32.sh) do subscriber também alimenta
 este monitor: ele publica nos dois tópicos.
@@ -171,4 +174,5 @@ São do desenho atual, não defeitos a corrigir às pressas:
 | `ConnectionRefusedError` no start | `MQTT_HOST` errado — ver a tabela de endereços |
 | Tabela vazia, sem erro | Tópico divergente, ou nenhum ESP32 publicando health check |
 | Conecta e cai em laço | `MONITOR_CLIENT_ID` igual ao de outro cliente MQTT |
+| Coluna `Dispositivo` mostrando o MAC | A placa ainda não recebeu o firmware que publica `device_name` |
 | `timestamp` mostrando número pequeno | O ESP32 não sincronizou NTP e mandou o uptime; ver o [contrato](../../docs/mqtt-contract.md) |

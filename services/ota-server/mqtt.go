@@ -21,6 +21,9 @@ type OTACommandPayload struct {
 
 // OTAStatusPayload define o JSON reportado pelo ESP32 sobre o progresso
 type OTAStatusPayload struct {
+	// DeviceID e informativo: a identidade real vem do segmento do topico.
+	DeviceID string `json:"device_id"`
+	// SensorID e a chave antiga, de firmware anterior ao rename.
 	SensorID  string `json:"sensor_id"`
 	Status    string `json:"status"` // "DOWNLOADING", "FLASHING", "SUCCESS", "FAILED"
 	Version   string `json:"version"`
@@ -100,11 +103,15 @@ func (m *MQTTManager) handleOTAStatus(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
+	// A identidade vem do TOPICO, nao do payload: foi por ele que o broker
+	// roteou a mensagem, e ele existe tanto no firmware novo (device_id) quanto
+	// no antigo (sensor_id). Confiar no payload deixaria uma placa com build
+	// errado reportar o status de outra.
 	parts := strings.Split(msg.Topic(), "/")
-	mac := payload.SensorID
-	if len(parts) >= 3 && mac == "" {
-		mac = parts[1]
+	if len(parts) != 3 {
+		return
 	}
+	mac := strings.ToUpper(parts[1])
 	if mac == "" {
 		return
 	}

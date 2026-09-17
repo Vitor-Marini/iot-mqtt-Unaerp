@@ -47,7 +47,8 @@ class MultiHealthcheckApp:
         table_frame.pack(fill=tk.BOTH, expand=True)
 
         columns = (
-            "sensor_id",
+            "device_id",
+            "device_name",
             "model",
             "status",
             "rssi",
@@ -59,7 +60,8 @@ class MultiHealthcheckApp:
 
         # Configuração das Colunas
         headers = {
-            "sensor_id": "Sensor ID",
+            "device_id": "MAC",
+            "device_name": "Dispositivo",
             "model": "Modelo",
             "status": "Status",
             "rssi": "Sinal (RSSI)",
@@ -69,8 +71,9 @@ class MultiHealthcheckApp:
         }
 
         col_widths = {
-            "sensor_id": 110,
-            "model": 130,
+            "device_id": 110,
+            "device_name": 120,
+            "model": 100,
             "status": 90,
             "rssi": 90,
             "free_heap": 120,
@@ -99,8 +102,22 @@ class MultiHealthcheckApp:
         )
         self.footer.pack(side=tk.BOTTOM, fill=tk.X)
 
-    def update_data(self, data: dict):
-        sensor_id = str(data.get("sensor_id", "DESCONHECIDO"))
+    def update_data(self, data: dict, topic: str = ""):
+        # A identidade vem do SEGMENTO DO TOPICO (devices/{MAC}/health-check),
+        # nao do payload. O topico existe tanto no firmware novo (device_id)
+        # quanto no antigo (sensor_id); ler do payload faria todas as placas
+        # colapsarem na linha "DESCONHECIDO" no dia do rename, porque o iid da
+        # tabela e essa chave.
+        parts = topic.split("/")
+        device_id = parts[1].upper() if len(parts) == 3 and parts[1] else ""
+        if not device_id:
+            device_id = str(
+                data.get("device_id") or data.get("sensor_id") or "DESCONHECIDO"
+            )
+
+        # Nome amigavel publicado pelo firmware; sem ele, mostra o proprio MAC.
+        device_name = str(data.get("device_name") or device_id)
+
         model = data.get("sensor_model", "N/A")
         status = str(data.get("status", "N/A")).upper()
         rssi = f"{data.get('rssi', '--')} dBm"
@@ -113,17 +130,17 @@ class MultiHealthcheckApp:
 
         timestamp = str(data.get("timestamp", "--"))
 
-        values = (sensor_id, model, status, rssi, free_heap, uptime, timestamp)
+        values = (device_id, device_name, model, status, rssi, free_heap, uptime, timestamp)
 
         # Atualiza a linha existente ou insere um novo dispositivo
-        if self.tree.exists(sensor_id):
-            self.tree.item(sensor_id, values=values)
+        if self.tree.exists(device_id):
+            self.tree.item(device_id, values=values)
         else:
-            self.tree.insert("", tk.END, iid=sensor_id, values=values)
+            self.tree.insert("", tk.END, iid=device_id, values=values)
 
         total = len(self.tree.get_children())
         self.footer.config(
-            text=f"Dispositivos ativos: {total} | Última atualização: {sensor_id}",
+            text=f"Dispositivos ativos: {total} | Última atualização: {device_name}",
             fg="#27ae60",
         )
 
@@ -137,7 +154,7 @@ def start_mqtt(app):
     def on_message(client, userdata, msg):
         try:
             data = json.loads(msg.payload.decode("utf-8"))
-            app.root.after(0, app.update_data, data)
+            app.root.after(0, app.update_data, data, msg.topic)
         except Exception:
             pass
 
