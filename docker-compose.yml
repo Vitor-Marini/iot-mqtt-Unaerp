@@ -137,6 +137,33 @@ services:
       - ./services/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
 
+  ota-server:
+    build:
+      context: ./services/ota-server
+      dockerfile: Dockerfile
+    image: iot-ota-server:local
+    container_name: ota-server
+    restart: unless-stopped
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      OTA_PORT: "8080"
+      OTA_EXTERNAL_HOST: ${OTA_EXTERNAL_HOST:-192.168.1.100}
+      STORAGE_DIR: /app/storage
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_TOPIC_BASE: ${MQTT_TOPIC_BASE:-devices}
+    ports:
+      - "${OTA_PORT:-8080}:8080"
+    volumes:
+      - ./services/ota-server/storage:/app/storage
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   mosquitto_data:
   mosquitto_log:

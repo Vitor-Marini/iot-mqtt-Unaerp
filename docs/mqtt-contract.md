@@ -43,6 +43,7 @@ telemetryTopic   = MQTT_TOPIC_BASE + "/" + macId + "/" + "telemetry";
 healthCheckTopic = MQTT_TOPIC_BASE + "/" + macId + "/" + "health-check";
 commandTopic     = MQTT_TOPIC_BASE + "/" + macId + "/" + "commands";
 broadcastTopic   = MQTT_TOPIC_BASE + "/" + "broadcast";
+otaStatusTopic   = MQTT_TOPIC_BASE + "/" + macId + "/" + "ota-status";
 ```
 
 `MQTT_TOPIC_BASE` vem de `mqtt_topic_base` no `secrets.ini` (padrão: `devices`).
@@ -50,6 +51,10 @@ broadcastTopic   = MQTT_TOPIC_BASE + "/" + "broadcast";
 | Tópico | Direção | Publicador | Assinante |
 |---|---|---|---|
 | `devices/{MAC}/telemetry` | ESP32 → broker | firmware | `subscriber` |
+| `devices/{MAC}/health-check` | ESP32 → broker | firmware | `subscriber` |
+| `devices/{MAC}/commands` | broker → ESP32 | `ota-server` | firmware |
+| `devices/broadcast` | broker → ESP32 | `ota-server` | firmware |
+| `devices/{MAC}/ota-status` | ESP32 → broker | firmware | `ota-server` |
 | `devices/{MAC}/health-check` | ESP32 → broker | firmware | `subscriber`, `healthcheck-monitor` |
 | `devices/{MAC}/commands` | broker → ESP32 | (futuro: OTA) | firmware |
 | `devices/broadcast` | broker → ESP32 | (futuro) | firmware |
@@ -154,6 +159,50 @@ Dois detalhes que mudam a leitura do campo `status`:
 
 `uptime_ms` está em **milissegundos** — divida por 1000 antes de comparar com
 qualquer coisa em segundos.
+
+## `devices/broadcast` e `devices/{MAC}/commands` (Comandos OTA)
+
+Publicado pelo `ota-server` para disparar a atualização de firmware no ESP32.
+
+```json
+{
+  "cmd": "ota",
+  "version": "1.0.1",
+  "url": "http://192.168.1.100:8080/firmware/firmware-v1.0.1.bin",
+  "md5": "d41d8cd98f00b204e9800998ecf8427e"
+}
+```
+
+| Campo | Tipo | Obrigatório | Descrição |
+|---|---|:---:|---|
+| `cmd` | string | sim | Literal `"ota"` |
+| `version` | string | não | Identificador da versão sendo distribuída |
+| `url` | string | sim | URL HTTP direta para download do binário pelo ESP32 |
+| `md5` | string | não | Hash MD5 para validação de integridade antes da gravação |
+
+## `devices/{MAC}/ota-status`
+
+Publicado pelo firmware em resposta a comandos OTA para fornecer visibilidade do ciclo de vida da atualização.
+
+```json
+{
+  "sensor_id": "A1B2C3D4E5F6",
+  "status": "SUCCESS",
+  "version": "1.0.1",
+  "ip": "192.168.1.150",
+  "message": "Firmware validado com sucesso apos boot OTA.",
+  "free_heap": 184200,
+  "uptime_ms": 3200,
+  "timestamp": 1787960400
+}
+```
+
+| Status | Momento | Significado |
+|---|---|---|
+| `"DOWNLOADING"` | Início do download | ESP32 iniciou a conexão HTTP com o `ota-server` |
+| `"FLASHING"` | Gravação | ESP32 gravando blocos na partição secundária Flash |
+| `"SUCCESS"` | Pós-reboot | Novo firmware inicializou, conectou no MQTT e validou rollback |
+| `"FAILED"` | Erro | Falha de download, rede, partição ou hash MD5 divergente |
 
 ## Detecção de dispositivo offline
 
