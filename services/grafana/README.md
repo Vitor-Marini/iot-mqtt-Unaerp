@@ -106,7 +106,9 @@ Painéis sugeridos para a estação. As consultas Flux prontas estão em
 | Heap livre | time series | `healthcheck` / `free_heap` |
 | Silêncio desde o último contato | stat | `healthcheck`, ver consulta de queda |
 
-Agrupe por `sensor_id` nos painéis para separar múltiplos ESP32.
+Agrupe por `device_name`: com Flux, o Grafana nomeia a série pelas colunas do
+group key, então agrupar **só** por `device_name` já faz a legenda sair com o
+nome legível da placa, sem transformação nem override.
 
 ## Problemas comuns
 

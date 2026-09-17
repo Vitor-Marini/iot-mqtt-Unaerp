@@ -1,0 +1,1169 @@
+{
+  "id": null,
+  "uid": "estacao-fleet",
+  "title": "Estacao Meteorologica - Frota",
+  "description": "Painel provisionado. Um seletor de dispositivo alimenta todos os graficos; a ultima linha repete por placa selecionada.",
+  "tags": [
+    "esp32",
+    "bmp280",
+    "iot"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "device",
+        "label": "Dispositivo",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "query": "import \"influxdata/influxdb/schema\"\n\nschema.tagValues(\n  bucket: \"sensors\",\n  tag: \"device_name\",\n  predicate: (r) => r._measurement == \"healthcheck\",\n  start: -30d,\n)",
+        "definition": "schema.tagValues(device_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "sort": 1,
+        "hide": 0,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Visao geral da frota",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Online (< 90s)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"sensors\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\" and r._field == \"status\")\n  |> filter(fn: (r) => r.device_name =~ /^(${device:regex})$/)\n  |> group(columns: [\"device_id\", \"device_name\"])\n  |> last()\n  |> map(fn: (r) => ({\n        device_id:   r.device_id,\n        device_name: r.device_name,\n        last_seen:   r._time,\n        silencio_s:  int(v: uint(v: now()) - uint(v: r._time)) / 1000000000,\n     }))\n  |> group()\n  |> filter(fn: (r) => r.silencio_s <= 90)\n  |> count(column: \"device_id\")"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^device_id$/"
+        },
+        "textMode": "auto",
+        "colorMode": "value"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Offline (> 90s)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"sensors\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\" and r._field == \"status\")\n  |> filter(fn: (r) => r.device_name =~ /^(${device:regex})$/)\n  |> group(columns: [\"device_id\", \"device_name\"])\n  |> last()\n  |> map(fn: (r) => ({\n        device_id:   r.device_id,\n        device_name: r.device_name,\n        last_seen:   r._time,\n        silencio_s:  int(v: uint(v: now()) - uint(v: r._time)) / 1000000000,\n     }))\n  |> group()\n  |> filter(fn: (r) => r.silencio_s > 90)\n  |> count(column: \"device_id\")"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^device_id$/"
+        },
+        "textMode": "auto",
+        "colorMode": "value"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Placas sem NTP (pontos em 1970)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"sensors\")\n  |> range(start: 1970-01-01T00:00:00Z, stop: 1971-01-01T00:00:00Z)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\" and r._field == \"uptime_ms\")\n  |> group(columns: [\"device_id\"])\n  |> last()\n  |> group()\n  |> count(column: \"device_id\")"
+        }
+      ],
+      "description": "Placas cujo timestamp cai perto da epoca Unix por falta de NTP. ATENCAO: esses pontos ficam FORA da janela dos outros paineis, inclusive do de silencio -- uma placa contada aqui esta invisivel la. Ver docs/mqtt-contract.md, secao do timestamp.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^device_id$/"
+        },
+        "textMode": "auto",
+        "colorMode": "background"
+      }
+    },
+    {
+      "type": "piechart",
+      "title": "Distribuicao de versoes",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"sensors\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\" and r._field == \"version\")\n  |> filter(fn: (r) => r.device_name =~ /^(${device:regex})$/)\n  |> group(columns: [\"device_id\"])\n  |> last()\n  |> keep(columns: [\"device_id\", \"_value\"])\n  |> rename(columns: {_value: \"version\"})\n  |> group(columns: [\"version\"])\n  |> count(column: \"device_id\")\n  |> group()\n  |> rename(columns: {device_id: \"dispositivos\"})"
+        }
+      ],
+      "description": "unknown = placa que ainda nao recebeu o OTA com device_name/version.",
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "${__field.labels.version}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^dispositivos$/"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "right"
+        },
+        "pieType": "donut"
+      }
+    },
+    {
+      "type": "table",
+      "title": "Inventario de dispositivos",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"sensors\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\")\n  |> filter(fn: (r) => r._field == \"version\" or r._field == \"ip\")\n  |> filter(fn: (r) => r.device_name =~ /^(${device:regex})$/)\n  |> group(columns: [\"device_id\", \"device_name\", \"_field\"])\n  |> last()\n  |> pivot(rowKey: [\"device_id\", \"device_name\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> keep(columns: [\"device_id\", \"device_name\", \"version\", \"ip\"])"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"sensors\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\")\n  |> filter(fn: (r) => r._field == \"status\" or r._field == \"rssi\" or r._field == \"free_heap\")\n  |> filter(fn: (r) => r.device_name =~ /^(${device:regex})$/)\n  |> group(columns: [\"device_id\", \"_field\"])\n  |> last()\n  |> pivot(rowKey: [\"device_id\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> keep(columns: [\"device_id\", \"status\", \"rssi\", \"free_heap\"])"
+        }
+      ],
+      "description": "Duas consultas unidas por device_id: version e ip sao fields de STRING e os demais sao numericos, e um pivot unico nao mescla tabelas com tipos de _value diferentes.",
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "device_id",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "device_name": 0,
+              "device_id": 1,
+              "version": 2,
+              "ip": 3,
+              "status": 4,
+              "rssi": 5,
+              "free_heap": 6
+            },
+            "renameByName": {
+              "device_name": "Dispositivo",
+              "device_id": "MAC",
+              "version": "Firmware",
+              "ip": "IP",
+              "status": "Sensor",
+              "rssi": "RSSI",
+              "free_heap": "Heap livre"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "center"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sensor"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "1": {
+                        "text": "OK",
+                        "color": "green",
+                        "index": 0
+                      },
+                      "0": {
+                        "text": "ERROR",
+                        "color": "red",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "RSSI"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dBm"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Heap livre"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decbytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Temperatura",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and r._field == \"temperature\")\n  |> filter(fn: (r) => r.device_name =~ /^(${device:regex})$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"device_name\"])\n  |> group(columns: [\"device_name\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "displayName": "${__field.labels.device_name}",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Pressao",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and r._field == \"pressure\")\n  |> filter(fn: (r) => r.device_name =~ /^(${device:regex})$/)\n  |> filter(fn: (r) => r._value > 0.0)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"device_name\"])\n  |> group(columns: [\"device_name\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pressurehpa",
+          "displayName": "${__field.labels.device_name}",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Sinal WiFi (RSSI)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\" and r._field == \"rssi\")\n  |> filter(fn: (r) => r.device_name =~ /^(${device:regex})$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"device_name\"])\n  |> group(columns: [\"device_name\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dBm",
+          "displayName": "${__field.labels.device_name}",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Heap livre",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\" and r._field == \"free_heap\")\n  |> filter(fn: (r) => r.device_name =~ /^(${device:regex})$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: min, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"device_name\"])\n  |> group(columns: [\"device_name\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decbytes",
+          "displayName": "${__field.labels.device_name}",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "state-timeline",
+      "title": "Estado do sensor (OK / ERROR)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 24,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\" and r._field == \"status\")\n  |> filter(fn: (r) => r.device_name =~ /^(${device:regex})$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: min, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"device_name\"])\n  |> group(columns: [\"device_name\"])"
+        }
+      ],
+      "description": "Saude do BMP280, nao da conexao. O health-check disparado dentro de connect() manda true fixo, entao a primeira amostra apos cada reconexao reporta OK mesmo com o sensor morto.",
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "${__field.labels.device_name}",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "OK",
+                  "color": "green",
+                  "index": 0
+                },
+                "0": {
+                  "text": "ERROR",
+                  "color": "red",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "mergeValues": true,
+        "showValue": "never"
+      }
+    },
+    {
+      "type": "table",
+      "title": "Silencio desde o ultimo contato",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"sensors\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\" and r._field == \"status\")\n  |> filter(fn: (r) => r.device_name =~ /^(${device:regex})$/)\n  |> group(columns: [\"device_id\", \"device_name\"])\n  |> last()\n  |> map(fn: (r) => ({\n        device_id:   r.device_id,\n        device_name: r.device_name,\n        last_seen:   r._time,\n        silencio_s:  int(v: uint(v: now()) - uint(v: r._time)) / 1000000000,\n     }))\n  |> group()\n  |> sort(columns: [\"silencio_s\"], desc: true)"
+        }
+      ],
+      "description": "Janela fixa de 30d de proposito: um painel de deteccao de queda nao pode depender do seletor de tempo, senao olhar now-1h esconde exatamente a placa que voce procura. O firmware nao registra LWT.",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "device_name": 0,
+              "device_id": 1,
+              "silencio_s": 2,
+              "last_seen": 3
+            },
+            "renameByName": {
+              "device_name": "Dispositivo",
+              "device_id": "MAC",
+              "silencio_s": "Silencio",
+              "last_seen": "Ultimo contato"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "center"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Silencio"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 90
+                    },
+                    {
+                      "color": "red",
+                      "value": 300
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "type": "row",
+      "title": "$device",
+      "repeat": "device",
+      "repeatDirection": "h",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Sensor",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 4,
+            "h": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "influxdb",
+                "uid": "influxdb"
+              },
+              "query": "from(bucket: \"sensors\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\" and r._field == \"status\")\n  |> filter(fn: (r) => r.device_name == \"$device\")\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\"])"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "1": {
+                      "text": "OK",
+                      "color": "green",
+                      "index": 0
+                    },
+                    "0": {
+                      "text": "ERROR",
+                      "color": "red",
+                      "index": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "textMode": "auto",
+            "colorMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Temperatura",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "gridPos": {
+            "x": 4,
+            "y": 0,
+            "w": 4,
+            "h": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "influxdb",
+                "uid": "influxdb"
+              },
+              "query": "from(bucket: \"sensors\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and r._field == \"temperature\")\n  |> filter(fn: (r) => r.device_name == \"$device\")\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\"])"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "celsius",
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "textMode": "auto",
+            "colorMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Pressao",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "gridPos": {
+            "x": 8,
+            "y": 0,
+            "w": 4,
+            "h": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "influxdb",
+                "uid": "influxdb"
+              },
+              "query": "from(bucket: \"sensors\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and r._field == \"pressure\")\n  |> filter(fn: (r) => r.device_name == \"$device\")\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\"])"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "pressurehpa",
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "textMode": "auto",
+            "colorMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Altitude",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 0,
+            "w": 4,
+            "h": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "influxdb",
+                "uid": "influxdb"
+              },
+              "query": "from(bucket: \"sensors\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"telemetry\" and r._field == \"altitude\")\n  |> filter(fn: (r) => r.device_name == \"$device\")\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\"])"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "lengthm",
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "textMode": "auto",
+            "colorMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Firmware",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "gridPos": {
+            "x": 16,
+            "y": 0,
+            "w": 4,
+            "h": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "influxdb",
+                "uid": "influxdb"
+              },
+              "query": "from(bucket: \"sensors\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\" and r._field == \"version\")\n  |> filter(fn: (r) => r.device_name == \"$device\")\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\"])"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "textMode": "value",
+            "colorMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "IP",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "gridPos": {
+            "x": 20,
+            "y": 0,
+            "w": 4,
+            "h": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "influxdb",
+                "uid": "influxdb"
+              },
+              "query": "from(bucket: \"sensors\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\" and r._field == \"ip\")\n  |> filter(fn: (r) => r.device_name == \"$device\")\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\"])"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "textMode": "value",
+            "colorMode": "value"
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Telemetria",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 4,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "influxdb",
+                "uid": "influxdb"
+              },
+              "query": "from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"telemetry\")\n  |> filter(fn: (r) => r._field == \"temperature\" or r._field == \"pressure\")\n  |> filter(fn: (r) => r.device_name == \"$device\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> group(columns: [\"_field\"])"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "displayName": "${__field.labels._field}",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 8
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "temperature"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "celsius"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pressure"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "pressurehpa"
+                  },
+                  {
+                    "id": "custom.axisPlacement",
+                    "value": "right"
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Saude do dispositivo",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 4,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "influxdb",
+                "uid": "influxdb"
+              },
+              "query": "from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"healthcheck\")\n  |> filter(fn: (r) => r._field == \"rssi\" or r._field == \"free_heap\")\n  |> filter(fn: (r) => r.device_name == \"$device\")\n  |> aggregateWindow(every: v.windowPeriod, fn: min, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> group(columns: [\"_field\"])"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "displayName": "${__field.labels._field}",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "rssi"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dBm"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "free_heap"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "decbytes"
+                  },
+                  {
+                    "id": "custom.axisPlacement",
+                    "value": "right"
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
