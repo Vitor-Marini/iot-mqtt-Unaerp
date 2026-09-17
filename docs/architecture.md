@@ -24,10 +24,11 @@ essas mensagens no InfluxDB, que o Grafana consulta para os painéis.
           │ MQTT subscribe  devices/+/telemetry
           │                 devices/+/health-check
           ▼
-┌────────────────────┐
-│  subscriber        │  Docker (Go)
-│  MQTT → InfluxDB   │  Decodifica o JSON, separa em channels e
-└─────────┬──────────┘  escreve os pontos
+┌────────────────────┐        ┌──────────────────────┐
+│  subscriber        │        │ healthcheck-monitor  │  Python + Tkinter
+│  MQTT → InfluxDB   │        │ janela com a tabela, │  Segundo assinante:
+└─────────┬──────────┘        │ sem persistir nada   │  não grava nada
+          │                   └──────────────────────┘
           │
           │ HTTP write (line protocol, API v2)
           ▼
@@ -91,6 +92,28 @@ ProcessTelemetry  ProcessHealthcheck    goroutines que montam e gravam pontos
 Os channels existem para desacoplar recepção de escrita: o callback do MQTT
 devolve o controle imediatamente e não fica preso esperando o banco responder.
 
+## Dois assinantes, propósitos opostos
+
+MQTT entrega a mesma mensagem a todos os assinantes, então `subscriber` e
+`healthcheck-monitor` convivem sem disputar nada:
+
+| | `subscriber` (Go) | `healthcheck-monitor` (Python/Tkinter) |
+|---|---|---|
+| Assina | telemetria **e** health check | só health check |
+| Guarda | tudo, no InfluxDB | só o último estado, na tabela da janela |
+| Serve para | histórico e dashboards | saber agora se as placas estão vivas |
+| Se cair | perde-se histórico | não se perde nada |
+| Depende de | broker + InfluxDB | broker + display gráfico |
+| Onde roda | container | host (GUI); container exige servidor X |
+
+A separação tem um motivo prático: diagnosticar uma placa não deveria exigir
+InfluxDB e Grafana no ar. O monitor funciona com o broker sozinho, e é a
+primeira coisa a subir quando algo parece errado no hardware.
+
+O único cuidado é o Client ID: dois clientes MQTT com o mesmo identificador se
+expulsam mutuamente do broker, em laço. Daí `SUBSCRIBER_ID` e
+`MONITOR_CLIENT_ID` serem variáveis distintas.
+
 ## Por que escrita direta, e não scrape
 
 A versão anterior deste projeto usava Prometheus: o subscriber guardava o
@@ -129,16 +152,19 @@ depende de outro estar no mesmo host: toda referência cruzada é um endereço
 | `esp32-firmware` | — | `mosquitto:1883` |
 | `mosquitto` | `1883` | — |
 | `subscriber` | — (nenhuma) | `mosquitto:1883`, `influxdb:8086` |
+| `healthcheck-monitor` | — (nenhuma) | `mosquitto:1883` |
 | `influxdb` | `8086` | — |
 | `grafana` | `3000` | `influxdb:8086` |
 
-O `subscriber` é o único serviço que não abre porta nenhuma: ele só faz
-conexões de saída. Isso simplifica o firewall — não há nada para liberar
-chegando nele.
+`subscriber` e `healthcheck-monitor` são os únicos que não abrem porta nenhuma:
+só fazem conexões de saída. Isso simplifica o firewall — não há nada para
+liberar chegando neles.
 
-O `docker-compose.yml` da raiz existe apenas para desenvolvimento: ele sobe os
-quatro serviços Docker numa rede única, onde os nomes acima resolvem por DNS.
-Ver [../README.md](../README.md#execução).
+Os serviços rodam em três arranjos possíveis (tudo numa máquina, máquinas com
+subconjuntos, ou uma por serviço), e a diferença entre eles está só nos
+endereços dos `.env`. O arranjo do meio — que é o que usamos — exige cuidado com
+a diferença entre Docker Desktop e Docker nativo no Linux. Tudo isso está em
+[`deployment.md`](deployment.md).
 
 ## Fluxo de dados de uma leitura
 

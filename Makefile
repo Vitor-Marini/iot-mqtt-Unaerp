@@ -1,7 +1,7 @@
 # Atalhos do ambiente FULL LOCAL (docker-compose.yml da raiz).
 # Para rodar um servico isolado, use o compose dentro de services/<nome>/.
 
-.PHONY: help up down restart logs ps clean urls firmware firmware-upload mock
+.PHONY: help up down restart logs ps clean urls firmware firmware-upload mock monitor network
 
 help: ## Lista os alvos disponiveis
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sed -e 's/:.*## /\t/' | column -t -s "$$(printf '\t')"
@@ -34,6 +34,13 @@ mock: ## Publica telemetria falsa no broker local (precisa de mosquitto_pub)
 	cd services/subscriber && ./mock_esp32.sh
 
 firmware: ## Compila o firmware e copia automaticamente para o ota-server (ex: make firmware VERSION=1.0.1)
+monitor: ## Abre a janela do monitor de health check (roda no host)
+	cd services/healthcheck-monitor && MQTT_HOST=localhost python monitor.py
+
+network: ## Cria a rede externa opcional (ver docs/deployment.md)
+	docker network create $${IOT_NETWORK:-iot-estacao} || true
+
+firmware: ## Compila o firmware do ESP32
 	cd services/esp32-firmware && pio run
 	@mkdir -p services/ota-server/storage
 	@cp services/esp32-firmware/.pio/build/esp32dev/firmware.bin services/ota-server/storage/firmware-$(if $(VERSION),$(VERSION),latest).bin

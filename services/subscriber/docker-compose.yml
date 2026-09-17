@@ -12,6 +12,13 @@ services:
     # tem valor padrao no codigo. Sem .env o servico sobe e falha nas escritas.
     env_file:
       - .env
+    extra_hosts:
+      # Faz `host.docker.internal` resolver tambem em Docker nativo no Linux,
+      # onde esse nome nao existe por padrao. No Docker Desktop (Windows/macOS)
+      # e redundante e inofensivo. E o que permite o MESMO valor de endereco
+      # funcionar nos dois sistemas quando o alvo esta na mesma maquina, em
+      # outro compose. Ver docs/deployment.md.
+      - "host.docker.internal:host-gateway"
     # Sem `ports`: o subscriber nao serve HTTP, so faz conexoes de saida.
     logging:
       driver: json-file

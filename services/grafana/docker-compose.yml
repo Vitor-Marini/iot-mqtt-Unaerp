@@ -14,6 +14,13 @@ services:
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-sensors}
       - INFLUXDB_TOKEN=${INFLUXDB_TOKEN:?defina INFLUXDB_TOKEN no .env}
       - GF_USERS_ALLOW_SIGN_UP=false
+    extra_hosts:
+      # Faz `host.docker.internal` resolver tambem em Docker nativo no Linux,
+      # onde esse nome nao existe por padrao. No Docker Desktop (Windows/macOS)
+      # e redundante e inofensivo. E o que permite o MESMO valor de INFLUXDB_URL
+      # funcionar nos dois sistemas quando o InfluxDB esta na mesma maquina, em
+      # outro compose. Ver docs/deployment.md.
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./provisioning:/etc/grafana/provisioning:ro
       - ./dashboards:/var/lib/grafana/dashboards:ro
