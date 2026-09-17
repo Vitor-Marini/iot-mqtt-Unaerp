@@ -72,14 +72,16 @@ bool SystemMQTTClient::publishTelemetry(const SensorPayload& data) {
     uint64_t timestampUtc = (now > 1000000000) ? (uint64_t)now : (uint64_t)(data.timestamp_ms / 1000);
 
     JsonDocument doc;
-    doc["sensor_id"]    = getDeviceMacId();
+    doc["device_id"]    = getDeviceMacId();
+    doc["device_name"]  = getDeviceName();
     doc["sensor_model"] = "BMP280";
     doc["temperature"]  = data.temperature;
     doc["pressure"]     = data.pressure;
     doc["altitude"]     = data.altitude;
     doc["timestamp"]    = timestampUtc;
 
-    char buffer[256];
+    // 320: cabe o payload com device_name de 24 caracteres com folga.
+    char buffer[320];
     size_t n = serializeJson(doc, buffer);
 
     bool result = mqttClient.publish(telemetryTopic.c_str(), buffer, n);
@@ -101,7 +103,8 @@ bool SystemMQTTClient::publishHealthCheck(bool sensorOk) {
     uint64_t timestampUtc = (now > 1000000000) ? (uint64_t)now : (uint64_t)(millis() / 1000);
 
     JsonDocument doc;
-    doc["sensor_id"]    = getDeviceMacId();
+    doc["device_id"]    = getDeviceMacId();
+    doc["device_name"]  = getDeviceName();
     doc["sensor_model"] = "BMP280";
     doc["version"]      = FIRMWARE_VERSION;
     doc["status"]       = sensorOk ? "OK" : "ERROR";
@@ -111,7 +114,8 @@ bool SystemMQTTClient::publishHealthCheck(bool sensorOk) {
     doc["uptime_ms"]    = millis();
     doc["timestamp"]    = timestampUtc;
 
-    char buffer[256];
+    // 384: health-check e o maior payload (device_name, version, ip).
+    char buffer[384];
     size_t n = serializeJson(doc, buffer);
 
     bool result = mqttClient.publish(healthCheckTopic.c_str(), buffer, n);
@@ -133,7 +137,7 @@ bool SystemMQTTClient::publishOTAStatus(const String& status, const String& vers
     uint64_t timestampUtc = (now > 1000000000) ? (uint64_t)now : (uint64_t)(millis() / 1000);
 
     JsonDocument doc;
-    doc["sensor_id"]  = getDeviceMacId();
+    doc["device_id"]  = getDeviceMacId();
     doc["status"]     = status;
     doc["version"]    = version;
     doc["ip"]         = WiFi.localIP().toString();

@@ -34,6 +34,12 @@
 #define MQTT_TOPIC_BASE         "devices"
 #endif
 
+// Nome legivel da placa, vindo do secrets.ini. Vazio por padrao de proposito:
+// ver getDeviceName() abaixo.
+#ifndef DEVICE_NAME
+#define DEVICE_NAME             ""
+#endif
+
 #define MQTT_TOPIC_TELEMETRY    "telemetry"
 #define MQTT_TOPIC_HEALTHCHECK  "health-check"
 #define MQTT_TOPIC_COMMANDS     "commands"
@@ -71,6 +77,19 @@ inline String getDeviceMacId() {
     char macStr[13];
     snprintf(macStr, sizeof(macStr), "%04X%08X", (uint16_t)(mac >> 32), (uint32_t)mac);
     return String(macStr);
+}
+
+// Returns the human-readable device name, falling back to the MAC address.
+//
+// O fallback e o que mantem o OTA por broadcast seguro: como DEVICE_NAME e
+// definido em tempo de compilacao, um unico binario distribuido para toda a
+// frota daria o MESMO nome a todas as placas -- e no Grafana elas colapsariam
+// num item so do seletor, com as series misturadas. Sem nome, cada placa se
+// identifica pelo proprio MAC, que e unico.
+inline String getDeviceName() {
+    String name = String(DEVICE_NAME);
+    name.trim();
+    return name.length() > 0 ? name : getDeviceMacId();
 }
 
 #endif // CONFIG_H
