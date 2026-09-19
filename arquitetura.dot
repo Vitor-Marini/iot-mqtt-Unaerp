@@ -1,0 +1,172 @@
+digraph ArquiteturaSistema {
+    rankdir=TB;
+    nodesep=0.55;
+    ranksep=0.65;
+    splines=true;
+    bgcolor="#FFFFFF";
+    center=true;
+    fontname="Arial";
+    fontsize=13;
+
+    node [
+        fontname="Arial",
+        fontsize=11,
+        shape=rect,
+        style="filled,rounded",
+        fillcolor="#F8F9FA",
+        color="#2C3E50",
+        penwidth=1.5,
+        margin="0.25,0.18"
+    ];
+
+    edge [
+        fontname="Arial",
+        fontsize=9.5,
+        color="#34495E",
+        penwidth=1.4,
+        arrowsize=0.85
+    ];
+
+    // -------------------------------------------------------------
+    // CLUSTER: Dispositivos de Borda (Nós ESP32)
+    // -------------------------------------------------------------
+    subgraph cluster_edge {
+        label="Dispositivos de Borda (Nós ESP32)";
+        fontname="Arial Bold";
+        fontsize=13;
+        fontcolor="#2C3E50";
+        style="rounded,dashed";
+        color="#7F8C8D";
+        bgcolor="#FAFAFA";
+        margin=16;
+
+        esp1 [
+            label="Estação 1 (ESP32 + BMP280)\nIP: 192.168.10.201 | MAC: 545BA26062EC",
+            fillcolor="#EBF5FB",
+            color="#2980B9"
+        ];
+
+        esp2 [
+            label="Estação 2 (ESP32 + BMP280)\nIP: 192.168.10.176 | MAC: 688A7CC0E8FC",
+            fillcolor="#EBF5FB",
+            color="#2980B9"
+        ];
+
+        esp3 [
+            label="Estação 3 (ESP32 + BMP280)\nIP: 192.168.10.218 | MAC: F8E843F7C630",
+            fillcolor="#EBF5FB",
+            color="#2980B9"
+        ];
+
+        { rank=same; esp1; esp2; esp3; }
+    }
+
+    // -------------------------------------------------------------
+    // CLUSTER: Servidor Central / Docker
+    // -------------------------------------------------------------
+    subgraph cluster_server {
+        label="Servidor Central / Docker (Host: 192.168.10.130)";
+        fontname="Arial Bold";
+        fontsize=13;
+        fontcolor="#2C3E50";
+        style="rounded";
+        color="#2C3E50";
+        bgcolor="#FFFFFF";
+        margin=18;
+
+        mosquitto [
+            label="Broker MQTT (Eclipse Mosquitto)\nPorta: 1883\nTópicos: telemetry, health-check, ota",
+            fillcolor="#E8F8F5",
+            color="#16A085"
+        ];
+
+        subscriber [
+            label="Subscriber InfluxDB (Go)\nConsome telemetry e health-check\nPersistência em séries temporais",
+            fillcolor="#F4ECF7",
+            color="#8E44AD"
+        ];
+
+        health_monitor [
+            label="Healthcheck Monitor (Python)\nConsome devices/+/health-check\nSubscriber de status das estações",
+            fillcolor="#E8F6F3",
+            color="#1ABC9C"
+        ];
+
+        ota [
+            label="Servidor OTA (Go)\nPorta: 8080\nDistribuição de firmware.bin",
+            fillcolor="#FEF9E7",
+            color="#D4AC0D"
+        ];
+
+        influxdb [
+            label="Banco InfluxDB v2.7\nPorta: 8086\nBucket: sensors | Org: esp32",
+            fillcolor="#FDEDEC",
+            color="#C0392B"
+        ];
+
+        grafana [
+            label="Grafana 11 (Dashboards)\nPorta: 3000\nPainéis de telemetria e métricas",
+            fillcolor="#FBEEE6",
+            color="#E67E22"
+        ];
+
+        { rank=same; subscriber; health_monitor; ota; }
+        { rank=same; influxdb; }
+        { rank=same; grafana; }
+    }
+
+    // -------------------------------------------------------------
+    // CLUSTER: Interfaces do Usuário / Clientes
+    // -------------------------------------------------------------
+    subgraph cluster_client {
+        label="Interfaces de Visualização / Usuário";
+        fontname="Arial Bold";
+        fontsize=13;
+        fontcolor="#2C3E50";
+        style="rounded,dashed";
+        color="#7F8C8D";
+        bgcolor="#FAFAFA";
+        margin=16;
+
+        web_user [
+            label="Navegador Web (Grafana)\nhttp://192.168.10.130:3000\nDashboards Meteorológicos",
+            fillcolor="#EAEDED",
+            color="#34495E"
+        ];
+
+        gui_user [
+            label="Janela Tkinter (Healthcheck)\nMonitor em Tempo Real\nTabela de status dos nós",
+            fillcolor="#EAEDED",
+            color="#34495E"
+        ];
+
+        { rank=same; web_user; gui_user; }
+    }
+
+    // -------------------------------------------------------------
+    // CONEXÕES / SETAS
+    // -------------------------------------------------------------
+
+    // ESPs -> Mosquitto (Publicação MQTT)
+    esp1 -> mosquitto [label="MQTT Pub (:1883)", color="#16A085"];
+    esp2 -> mosquitto [label="MQTT Pub (:1883)", color="#16A085"];
+    esp3 -> mosquitto [label="MQTT Pub (:1883)", color="#16A085"];
+
+    // Mosquitto -> Consumers (Subscribers)
+    mosquitto -> subscriber [label="MQTT Sub (:1883)", color="#8E44AD"];
+    mosquitto -> health_monitor [label="MQTT Sub (:1883)", color="#1ABC9C"];
+
+    // Pipeline 1: Histórico e Telemetria (Subscriber Go -> InfluxDB -> Grafana -> Web)
+    subscriber -> influxdb [label="HTTP Line Protocol (:8086)", color="#C0392B"];
+    influxdb -> grafana [label="Consultas Flux (:8086)", color="#E67E22"];
+    grafana -> web_user [label="HTTP (:3000)", color="#E67E22"];
+
+    // Pipeline 2: Diagnóstico e Saúde (Healthcheck Monitor Python -> GUI Tkinter)
+    health_monitor -> gui_user [label="Exibição GUI (Tkinter)", color="#1ABC9C"];
+
+    // Gerenciamento OTA
+    ota -> mosquitto [label="Comando OTA (Pub :1883)", color="#D4AC0D", constraint=false];
+    esp1 -> ota [style="dashed", label="HTTP GET (:8080)", color="#D4AC0D", constraint=false];
+    esp2 -> ota [style="dashed", color="#D4AC0D", constraint=false];
+    esp3 -> ota [style="dashed", color="#D4AC0D", constraint=false];
+}
