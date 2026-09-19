@@ -29,7 +29,7 @@ class MultiHealthcheckApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Monitoramento Multi-Dispositivo IoT - Healthcheck")
-        self.root.geometry("820x350")
+        self.root.geometry("980x360")
 
         # Título superior
         title = tk.Label(
@@ -48,6 +48,8 @@ class MultiHealthcheckApp:
 
         columns = (
             "sensor_id",
+            "version",
+            "ip",
             "model",
             "status",
             "rssi",
@@ -60,6 +62,8 @@ class MultiHealthcheckApp:
         # Configuração das Colunas
         headers = {
             "sensor_id": "Sensor ID",
+            "version": "Versão",
+            "ip": "IP",
             "model": "Modelo",
             "status": "Status",
             "rssi": "Sinal (RSSI)",
@@ -70,12 +74,14 @@ class MultiHealthcheckApp:
 
         col_widths = {
             "sensor_id": 110,
-            "model": 130,
-            "status": 90,
-            "rssi": 90,
-            "free_heap": 120,
-            "uptime": 90,
-            "timestamp": 120,
+            "version": 80,
+            "ip": 110,
+            "model": 90,
+            "status": 70,
+            "rssi": 85,
+            "free_heap": 100,
+            "uptime": 80,
+            "timestamp": 110,
         }
 
         for col, heading in headers.items():
@@ -101,6 +107,8 @@ class MultiHealthcheckApp:
 
     def update_data(self, data: dict):
         sensor_id = str(data.get("sensor_id", "DESCONHECIDO"))
+        version = str(data.get("version", "--"))
+        ip = str(data.get("ip", "--"))
         model = data.get("sensor_model", "N/A")
         status = str(data.get("status", "N/A")).upper()
         rssi = f"{data.get('rssi', '--')} dBm"
@@ -113,7 +121,7 @@ class MultiHealthcheckApp:
 
         timestamp = str(data.get("timestamp", "--"))
 
-        values = (sensor_id, model, status, rssi, free_heap, uptime, timestamp)
+        values = (sensor_id, version, ip, model, status, rssi, free_heap, uptime, timestamp)
 
         # Atualiza a linha existente ou insere um novo dispositivo
         if self.tree.exists(sensor_id):

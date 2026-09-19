@@ -60,12 +60,10 @@ if [ $? -ne 0 ]; then
   echo "FALHOU!"
   echo "Erro de conexão com o servidor OTA ($SERVER):"
   echo "$RESPONSE"
-  echo "Verifique se o servidor Go está rodando em outro terminal com 'make run'!"
   exit 1
 fi
 
 echo "OK!"
-echo "Resposta do servidor:"
-echo "$RESPONSE"
+echo "Resposta do servidor: $RESPONSE"
 echo ""
-echo "-> Acompanhe o progresso em tempo real nos logs do servidor ('make run')!"
+echo "-> Acompanhe o progresso em tempo real nos logs do ota-server (make logs S=ota-server)!"

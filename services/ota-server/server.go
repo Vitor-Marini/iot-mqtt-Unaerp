@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,10 +31,12 @@ type PublishRequest struct {
 }
 
 type HTTPServer struct {
-	storageDir   string
-	externalHost string
-	port         int
-	mqttMgr      *MQTTManager
+	storageDir      string
+	externalHost    string
+	port            int
+	mqttMgr         *MQTTManager
+	activeDownloads int32
+	downloadSem     chan struct{}
 }
 
 func NewHTTPServer(storageDir, externalHost string, port int, mqttMgr *MQTTManager) *HTTPServer {
@@ -42,6 +45,7 @@ func NewHTTPServer(storageDir, externalHost string, port int, mqttMgr *MQTTManag
 		externalHost: externalHost,
 		port:         port,
 		mqttMgr:      mqttMgr,
+		downloadSem:  make(chan struct{}, 1), // Limita a 1 download por vez: protege USB contra brownout e Wi-Fi contra colisao
 	}
 }
 
@@ -52,10 +56,18 @@ func (s *HTTPServer) SetupRoutes() http.Handler {
 	mux.HandleFunc("/firmware/", s.handleDownloadFirmware)
 	mux.HandleFunc("/api/firmware/latest", s.handleLatestFirmware)
 	mux.HandleFunc("/api/ota/publish", s.handlePublishOTA)
+	mux.HandleFunc("/api/ota/active-downloads", s.handleActiveDownloads)
 	mux.HandleFunc("/api/nodes/status", s.handleNodesStatus)
 	mux.HandleFunc("/status", s.handleNodesStatus)
 
 	return mux
+}
+
+func (s *HTTPServer) handleActiveDownloads(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int32{
+		"active_downloads": atomic.LoadInt32(&s.activeDownloads),
+	})
 }
 
 func (s *HTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -96,14 +108,30 @@ func (s *HTTPServer) handleDownloadFirmware(w http.ResponseWriter, r *http.Reque
 	}
 	defer file.Close()
 
-	log.Printf("[HTTP] 📥 ESP32 (%s) baixando '%s' (%d bytes)...", r.RemoteAddr, filename, fileInfo.Size())
+	log.Printf("[HTTP] ⏳ ESP32 (%s) aguardando vez na fila de download de '%s'...", r.RemoteAddr, filename)
+
+	select {
+	case s.downloadSem <- struct{}{}:
+		defer func() { <-s.downloadSem }()
+	case <-r.Context().Done():
+		log.Printf("[HTTP] ⚠️ ESP32 (%s) cancelou requisicao antes de iniciar", r.RemoteAddr)
+		return
+	}
+
+	atomic.AddInt32(&s.activeDownloads, 1)
+	defer atomic.AddInt32(&s.activeDownloads, -1)
+
+	log.Printf("[HTTP] 📥 ESP32 (%s) iniciando download de '%s' (%d bytes)...", r.RemoteAddr, filename, fileInfo.Size())
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", fileInfo.Size()))
 	w.Header().Set("x-MD5", hash)
 
-	copied, err := io.Copy(w, file)
+	// Desativa sendfile do kernel Linux usando struct{ io.Reader }{ file }
+	// O ESP32 possui buffer TCP (lwIP) muito pequeno (~4KB) e sofre com sendfile kernel-level
+	buf := make([]byte, 4096)
+	copied, err := io.CopyBuffer(w, struct{ io.Reader }{ file }, buf)
 	if err != nil {
 		log.Printf("[HTTP] ⚠️ Download interrompido por %s: %v", r.RemoteAddr, err)
 		return

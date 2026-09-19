@@ -56,10 +56,10 @@ void vTaskWiFiMQTT(void* pvParameters) {
         wifiManagerService.processWiFi();
 
         if (wifiManagerService.isConnected()) {
-            mqttService.loop();
-
-            // Só processa telemetria se nao estiver executando gravacao de firmware OTA
+            // Só executa o loop MQTT e telemetria se NÃO estiver no meio de uma atualização OTA
             if (!otaService.isUpdating()) {
+                mqttService.loop();
+
                 if (xQueueReceive(xSensorQueue, &receivedPayload, pdMS_TO_TICKS(50)) == pdPASS) {
                     mqttService.publishTelemetry(receivedPayload);
                 }
@@ -70,8 +70,8 @@ void vTaskWiFiMQTT(void* pvParameters) {
                     mqttService.publishHealthCheck(receivedPayload.isValid);
                 }
             } else {
-                // Em modo de atualizacao OTA, desacelera o loop WiFi para nao concorrer com o download
-                vTaskDelay(pdMS_TO_TICKS(200));
+                // Em modo de atualizacao OTA, desacelera o loop WiFi para dedicar a CPU e rede ao download
+                vTaskDelay(pdMS_TO_TICKS(500));
             }
         } else {
             Serial.println("[WIFI] Waiting for network reconnection...");
@@ -109,9 +109,9 @@ void vTaskOTA(void* pvParameters) {
             Serial.println("\n[vTaskOTA] Recebido comando de atualizacao OTA!");
             Serial.printf("[vTaskOTA] Baixando versao %s de: %s\n", req.version, req.url);
 
-            // Jitter aleatorio (0 a 1000ms) baseado no MAC para evitar que toda a frota
-            // inunde o servidor HTTP e o roteador no mesmo instante
-            uint32_t jitterMs = (uint32_t)(ESP.getEfuseMac() & 0x03FF);
+            // Jitter aleatório pequeno (0 a 1.5s) baseado no MAC
+            // Evita que todas as placas batam o SYN de abertura de socket TCP exatamente no mesmo milissegundo no AP Wi-Fi
+            uint32_t jitterMs = (uint32_t)(ESP.getEfuseMac() % 1500);
             vTaskDelay(pdMS_TO_TICKS(jitterMs));
 
             otaService.performHTTPUpdate(String(req.url), String(req.version), String(req.md5));
@@ -182,7 +182,7 @@ void setup() {
         NULL,
         1,
         &hTaskOTA,
-        0 // Core 0 dedicado para evitar disputa com WiFi/MQTT no Core 1
+        1 // Core 1 para não competir com a stack de Wi-Fi e evitar starvation do IDLE0
     );
 
     Serial.println("[SYSTEM] FreeRTOS tasks (Sensors, WiFi/MQTT, OTA) created successfully.\n");

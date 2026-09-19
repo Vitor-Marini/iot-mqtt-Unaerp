@@ -50,11 +50,11 @@
 
 // Periodic Task Execution Intervals (Overridden if build flags from secrets.ini are defined)
 #ifndef SENSOR_READ_INTERVAL_MS
-#define SENSOR_READ_INTERVAL_MS  5000
+#define SENSOR_READ_INTERVAL_MS  3000
 #endif
 
 #ifndef HEALTH_CHECK_INTERVAL_MS
-#define HEALTH_CHECK_INTERVAL_MS 30000
+#define HEALTH_CHECK_INTERVAL_MS 5000
 #endif
 
 // ESP32 Hardware Pin Mapping & FreeRTOS Resource Definitions

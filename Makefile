@@ -33,22 +33,17 @@ urls: ## Mostra os enderecos dos servicos
 mock: ## Publica telemetria falsa no broker local (precisa de mosquitto_pub)
 	cd services/subscriber && ./mock_esp32.sh
 
-firmware: ## Compila o firmware e copia automaticamente para o ota-server (ex: make firmware VERSION=1.0.1)
 monitor: ## Abre a janela do monitor de health check (roda no host)
-	cd services/healthcheck-monitor && MQTT_HOST=localhost python monitor.py
+	cd services/healthcheck-monitor && MQTT_HOST=localhost $$( [ -f venv/bin/python ] && echo "./venv/bin/python" || echo "python3" ) monitor.py
 
 network: ## Cria a rede externa opcional (ver docs/deployment.md)
 	docker network create $${IOT_NETWORK:-iot-estacao} || true
 
-firmware: ## Compila o firmware do ESP32
-	cd services/esp32-firmware && pio run
-	@mkdir -p services/ota-server/storage
-	@cp services/esp32-firmware/.pio/build/esp32dev/firmware.bin services/ota-server/storage/firmware-$(if $(VERSION),$(VERSION),latest).bin
-	@cp services/esp32-firmware/.pio/build/esp32dev/firmware.bin services/ota-server/storage/firmware.bin
-	@echo "✅ Firmware compilado e copiado para services/ota-server/storage/"
+firmware: ## Compila o firmware do ESP32 (ex: make firmware VERSION=1.0.1)
+	cd services/esp32-firmware && $(MAKE) compile VERSION=$(if $(VERSION),$(VERSION),1.0.1)
 
 firmware-upload: ## Grava o firmware via USB e abre o monitor serial
 	cd services/esp32-firmware && pio run --target upload --target monitor
 
-ota-trigger: ## Dispara atualizacao OTA via terminal: make ota-trigger (ou MAC=A1B2C3D4E5F6)
-	@cd services/ota-server && ./trigger_ota.sh $(if $(MAC),--target $(MAC),--target all)
+ota-trigger: ## Dispara atualizacao OTA via terminal: make ota-trigger (ou VERSION=1.0.1 MAC=A1B2C3D4E5F6)
+	@cd services/ota-server && ./trigger_ota.sh $(if $(VERSION),-v $(VERSION),) $(if $(MAC),-t $(MAC),-t all)

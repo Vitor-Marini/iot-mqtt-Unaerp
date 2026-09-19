@@ -70,9 +70,13 @@ func NewMQTTManager(brokerHost string, brokerPort int, user, pass, topicBase str
 
 	opts.SetOnConnectHandler(func(c mqtt.Client) {
 		log.Printf("[MQTT] ✅ Conectado ao broker Mosquitto em %s", brokerURI)
-		// Assina tópicos de status OTA de todos os nós: devices/+/ota-status de forma assíncrona
+		// Assina tópicos de status OTA de todos os nós: devices/+/ota-status
 		statusTopic := fmt.Sprintf("%s/+/ota-status", topicBase)
 		c.Subscribe(statusTopic, 0, mgr.handleOTAStatus)
+
+		// Assina tópicos de health-check para auto-descoberta imediata de toda a frota (mensagens retidas)
+		healthTopic := fmt.Sprintf("%s/+/health-check", topicBase)
+		c.Subscribe(healthTopic, 0, mgr.handleHealthCheck)
 	})
 
 	opts.SetConnectionLostHandler(func(c mqtt.Client, err error) {
@@ -91,6 +95,40 @@ func NewMQTTManager(brokerHost string, brokerPort int, user, pass, topicBase str
 	}()
 
 	return mgr, nil
+}
+
+func (m *MQTTManager) handleHealthCheck(client mqtt.Client, msg mqtt.Message) {
+	var payload struct {
+		SensorID string `json:"sensor_id"`
+		Version  string `json:"version"`
+		IP       string `json:"ip"`
+		Status   string `json:"status"`
+	}
+	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+		return
+	}
+	if payload.SensorID == "" {
+		return
+	}
+
+	m.nodesLock.Lock()
+	defer m.nodesLock.Unlock()
+
+	node, exists := m.nodesState[payload.SensorID]
+	if !exists {
+		node = &NodeTracking{}
+		m.nodesState[payload.SensorID] = node
+	}
+	if node.LastStatus != "DOWNLOADING" && node.LastStatus != "FLASHING" {
+		node.LastStatus = "ONLINE"
+	}
+	if payload.Version != "" {
+		node.Version = payload.Version
+	}
+	if payload.IP != "" {
+		node.IP = payload.IP
+	}
+	node.LastSeen = time.Now()
 }
 
 // handleOTAStatus processa as mensagens recebidas de cada ESP32

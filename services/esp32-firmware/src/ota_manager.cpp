@@ -61,32 +61,26 @@ bool SystemOTAManager::performHTTPUpdate(const String& url, const String& versio
     mqttService.publishOTAStatus("DOWNLOADING", version, "Iniciando download do novo firmware via HTTP...");
     vTaskDelay(pdMS_TO_TICKS(300)); // Aguarda envio do pacote MQTT
 
-    // Callback de progresso do Update para alimentar o Task Watchdog (TWDT)
-    // e ceder CPU para a tarefa IDLE0 do Core 0 durante o download de arquivos grandes
-    Update.onProgress([](size_t current, size_t total) {
-        static uint32_t lastYield = 0;
-        uint32_t now = millis();
-        if (now - lastYield >= 50) {
-            lastYield = now;
-            // Cede 2ms para a tarefa IDLE0 rodar e resetar o Watchdog Timer
-            vTaskDelay(pdMS_TO_TICKS(2));
-        }
+    WiFiClient client;
+    client.setTimeout(60); // 60 segundos no socket TCP
+    HTTPUpdate customHttpUpdate(60000); // 60 segundos no HTTP (evita timeout sob concorrencia Wi-Fi)
+    customHttpUpdate.rebootOnUpdate(true);
+    
+    // Cede 1 tick a cada bloco recebido para que as tarefas IDLE resetem o Watchdog Timer (TWDT)
+    customHttpUpdate.onProgress([](int cur, int total) {
+        vTaskDelay(pdMS_TO_TICKS(1));
     });
 
-    WiFiClient client;
-    client.setTimeout(30); // Timeout ampliado para redes com concorrencia / baixa velocidade
-    httpUpdate.rebootOnUpdate(true);
-    
     if (expectedMd5.length() > 0) {
         Update.setMD5(expectedMd5.c_str());
     }
 
-    t_httpUpdate_return ret = httpUpdate.update(client, url);
+    t_httpUpdate_return ret = customHttpUpdate.update(client, url);
 
     // Se a funcao retornar, significa que o update falhou (em caso de sucesso a placa reinicia automaticamente)
     updating = false;
-    String errStr = httpUpdate.getLastErrorString();
-    int errCode = httpUpdate.getLastError();
+    String errStr = customHttpUpdate.getLastErrorString();
+    int errCode = customHttpUpdate.getLastError();
 
     Serial.printf("[OTA ERROR] Falha na atualizacao (%d): %s\n", errCode, errStr.c_str());
 

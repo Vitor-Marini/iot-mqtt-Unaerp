@@ -30,4 +30,6 @@ wheels/
 
 # Virtual environments
 .venv
+venv/
+*/venv/
 .vscode/
