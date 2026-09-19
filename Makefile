@@ -1,7 +1,7 @@
 # Atalhos do ambiente FULL LOCAL (docker-compose.yml da raiz).
 # Para rodar um servico isolado, use o compose dentro de services/<nome>/.
 
-.PHONY: help up down restart logs ps clean urls firmware firmware-upload mock monitor network
+.PHONY: help up down restart logs ps clean urls firmware firmware-upload mock monitor network ota-trigger samples
 
 help: ## Lista os alvos disponiveis
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sed -e 's/:.*## /\t/' | column -t -s "$$(printf '\t')"
@@ -47,3 +47,7 @@ firmware-upload: ## Grava o firmware via USB e abre o monitor serial
 
 ota-trigger: ## Dispara atualizacao OTA via terminal: make ota-trigger (ou VERSION=1.0.1 MAC=A1B2C3D4E5F6)
 	@cd services/ota-server && ./trigger_ota.sh $(if $(VERSION),-v $(VERSION),) $(if $(MAC),-t $(MAC),-t all)
+
+samples: ## Exibe a contagem e amostragem atual de dados no InfluxDB
+	@./check_samples.py
+
